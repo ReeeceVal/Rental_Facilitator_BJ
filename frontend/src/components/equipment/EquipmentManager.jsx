@@ -70,8 +70,8 @@ export default function EquipmentManager() {
     )
   }
 
-  const equipment = data?.equipment || []
-  const pagination = data?.pagination
+  const equipment = data?.data?.equipment || []
+  const pagination = data?.data?.pagination
 
   return (
     <div className="space-y-6">
@@ -194,15 +194,6 @@ export default function EquipmentManager() {
                         {formatCurrency(item.daily_rate)}
                       </span>
                     </div>
-                    
-                    {item.weekly_rate && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">Weekly Rate:</span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {formatCurrency(item.weekly_rate)}
-                        </span>
-                      </div>
-                    )}
 
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-500">Stock:</span>

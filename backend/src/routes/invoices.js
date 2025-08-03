@@ -127,6 +127,88 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get calendar events (rental dates) - MUST be before /:id route
+router.get('/calendar', async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    
+    let query = `
+      SELECT 
+        i.id,
+        i.invoice_number,
+        i.rental_start_date,
+        i.rental_end_date,
+        i.total_amount,
+        i.status,
+        c.name as customer_name,
+        COALESCE(
+          array_agg(
+            DISTINCT jsonb_build_object(
+              'name', e.name,
+              'quantity', ii.quantity
+            )
+          ) FILTER (WHERE e.name IS NOT NULL), 
+          '{}'::jsonb[]
+        ) as equipment
+      FROM invoices i
+      LEFT JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN invoice_items ii ON i.id = ii.invoice_id
+      LEFT JOIN equipment e ON ii.equipment_id = e.id
+      WHERE i.status <> 'cancelled'
+    `;
+    
+    const queryParams = [];
+    let paramCount = 1;
+    
+    // Filter by year and month if provided
+    if (year) {
+      query += ` AND EXTRACT(YEAR FROM i.rental_start_date) = $${paramCount}`;
+      queryParams.push(parseInt(year));
+      paramCount++;
+    }
+    
+    if (month) {
+      query += ` AND EXTRACT(MONTH FROM i.rental_start_date) = $${paramCount}`;
+      queryParams.push(parseInt(month));
+      paramCount++;
+    }
+    
+    query += `
+      GROUP BY i.id, i.invoice_number, i.rental_start_date, i.rental_end_date, 
+               i.total_amount, i.status, c.name
+      ORDER BY i.rental_start_date ASC
+    `;
+    
+    const result = await pool.query(query, queryParams);
+    
+    // Transform data into calendar events
+    const events = result.rows.map(row => ({
+      id: row.id,
+      title: `${row.customer_name} - ${row.invoice_number}`,
+      start: row.rental_start_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
+      end: row.rental_end_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
+      totalAmount: parseFloat(row.total_amount),
+      status: row.status,
+      customer: row.customer_name,
+      equipment: row.equipment || [],
+      invoiceNumber: row.invoice_number
+    }));
+    
+    res.json({
+      success: true,
+      events,
+      count: events.length
+    });
+  } catch (error) {
+    console.error('Error fetching calendar events:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch calendar events',
+      error: error.message
+    });
+  }
+});
+
 // Get single invoice with items
 router.get('/:id', async (req, res) => {
   try {
@@ -180,6 +262,7 @@ router.post('/', invoiceValidation, async (req, res) => {
       customer_id,
       rental_start_date,
       rental_end_date,
+      rental_duration_days = 1,
       items,
       notes,
       tax_amount = 0
@@ -196,10 +279,10 @@ router.post('/', invoiceValidation, async (req, res) => {
     // Create invoice
     const invoiceResult = await client.query(`
       INSERT INTO invoices (invoice_number, customer_id, rental_start_date, rental_end_date, 
-                           subtotal, tax_amount, total_amount, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                           rental_duration_days, subtotal, tax_amount, total_amount, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
-    `, [invoice_number, customer_id, rental_start_date, rental_end_date, 
+    `, [invoice_number, customer_id, rental_start_date, rental_end_date, rental_duration_days,
         subtotal, tax_amount, total_amount, notes]);
 
     const invoice = invoiceResult.rows[0];
@@ -354,6 +437,7 @@ router.post('/create-and-generate-pdf', async (req, res) => {
       customer_data,
       rental_start_date,
       rental_end_date,
+      rental_duration_days = 1,
       items,
       notes,
       tax_amount = 0,
@@ -390,10 +474,10 @@ router.post('/create-and-generate-pdf', async (req, res) => {
     // Create invoice
     const invoiceResult = await client.query(`
       INSERT INTO invoices (invoice_number, customer_id, rental_start_date, rental_end_date, 
-                           subtotal, tax_amount, total_amount, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                           rental_duration_days, subtotal, tax_amount, total_amount, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
-    `, [invoice_number, customer_id, rental_start_date, rental_end_date, 
+    `, [invoice_number, customer_id, rental_start_date, rental_end_date, rental_duration_days,
         subtotal, tax_amount, total_amount, notes]);
 
     const invoice = invoiceResult.rows[0];

@@ -1,4 +1,6 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
+console.log('Loading .env from:', require('path').join(__dirname, '../../.env'));
+console.log('OpenAI API Key loaded:', process.env.OPENAI_API_KEY ? `${process.env.OPENAI_API_KEY.substring(0, 15)}...` : 'NOT FOUND');
 
 module.exports = {
   server: {

@@ -1,54 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Edit, Trash2, FileText, Settings, Copy, Eye } from 'lucide-react'
 import Button from '../components/ui/Button'
 import Modal, { ModalFooter } from '../components/ui/Modal'
 import Input, { Textarea } from '../components/ui/Input'
 import { PageLoader } from '../components/shared/LoadingSpinner'
 import InvoicePreview from '../components/invoice/InvoicePreview'
-
-// Mock template data - replace with real API calls when templates backend is implemented
-const mockTemplates = [
-  {
-    id: 1,
-    name: 'Standard Sound Rental Invoice',
-    template_data: {
-      companyName: 'Sound Rental Pro',
-      companyAddress: '123 Music Street\nAudio City, AC 12345',
-      companyPhone: '(555) 123-4567',
-      companyEmail: 'info@soundrentalpro.com',
-      headerColor: '#2563eb',
-      accentColor: '#1d4ed8',
-      footerText: 'Thank you for your business!',
-      termsAndConditions: 'Equipment must be returned in the same condition as rented.',
-      taxRate: 0.08,
-      currency: 'USD',
-      invoiceNumberPrefix: 'SR-'
-    },
-    is_default: true,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: 2,
-    name: 'Simple Template',
-    template_data: {
-      companyName: 'Audio Rentals LLC',
-      companyAddress: '456 Sound Ave\nMusic City, MC 67890',
-      companyPhone: '(555) 987-6543',
-      companyEmail: 'rentals@audiorentals.com',
-      headerColor: '#059669',
-      accentColor: '#047857',
-      footerText: 'Professional audio equipment rentals',
-      termsAndConditions: 'Payment due within 15 days.',
-      taxRate: 0.075,
-      currency: 'USD',
-      invoiceNumberPrefix: 'AR-'
-    },
-    is_default: false,
-    created_at: '2024-01-02T00:00:00Z',
-    updated_at: '2024-01-02T00:00:00Z'
-  }
-]
+import { 
+  useTemplates, 
+  useCreateTemplate, 
+  useUpdateTemplate, 
+  useDeleteTemplate, 
+  useSetDefaultTemplate, 
+  useDuplicateTemplate 
+} from '../hooks/useTemplates'
 
 function TemplateCard({ template, onEdit, onDelete, onSetDefault, onDuplicate, onPreview }) {
   return (
@@ -156,24 +120,58 @@ function TemplateCard({ template, onEdit, onDelete, onSetDefault, onDuplicate, o
 }
 
 function TemplateForm({ template, isOpen, onClose, onSave }) {
-  const [formData, setFormData] = useState(
-    template?.template_data || {
-      companyName: '',
-      companyAddress: '',
-      companyPhone: '',
-      companyEmail: '',
-      headerColor: '#2563eb',
-      accentColor: '#1d4ed8',
-      footerText: '',
-      termsAndConditions: '',
-      taxRate: 0.08,
-      currency: 'USD',
-      invoiceNumberPrefix: 'INV-'
-    }
-  )
+  const [formData, setFormData] = useState({
+    companyName: '',
+    companyAddress: '',
+    companyPhone: '',
+    companyEmail: '',
+    headerColor: '#2563eb',
+    accentColor: '#1d4ed8',
+    footerText: '',
+    termsAndConditions: '',
+    taxRate: 0.08,
+    currency: 'USD',
+    invoiceNumberPrefix: 'INV-'
+  })
   
-  const [templateName, setTemplateName] = useState(template?.name || '')
+  const [templateName, setTemplateName] = useState('')
   const [showPreview, setShowPreview] = useState(false)
+
+  // Update form data when template changes
+  useEffect(() => {
+    if (template) {
+      setFormData(template.template_data || {
+        companyName: '',
+        companyAddress: '',
+        companyPhone: '',
+        companyEmail: '',
+        headerColor: '#2563eb',
+        accentColor: '#1d4ed8',
+        footerText: '',
+        termsAndConditions: '',
+        taxRate: 0.08,
+        currency: 'USD',
+        invoiceNumberPrefix: 'INV-'
+      })
+      setTemplateName(template.name || '')
+    } else {
+      // Reset form for new template
+      setFormData({
+        companyName: '',
+        companyAddress: '',
+        companyPhone: '',
+        companyEmail: '',
+        headerColor: '#2563eb',
+        accentColor: '#1d4ed8',
+        footerText: '',
+        termsAndConditions: '',
+        taxRate: 0.08,
+        currency: 'USD',
+        invoiceNumberPrefix: 'INV-'
+      })
+      setTemplateName('')
+    }
+  }, [template])
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -350,10 +348,17 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
 }
 
 export default function Templates() {
-  const [templates, setTemplates] = useState(mockTemplates)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState(null)
   const [previewingTemplate, setPreviewingTemplate] = useState(null)
+
+  // API hooks
+  const { data: templates = [], isLoading, error } = useTemplates()
+  const createTemplate = useCreateTemplate()
+  const updateTemplate = useUpdateTemplate()
+  const deleteTemplate = useDeleteTemplate()
+  const setDefaultTemplate = useSetDefaultTemplate()
+  const duplicateTemplate = useDuplicateTemplate()
 
   const handleEdit = (template) => {
     setEditingTemplate(template)
@@ -365,47 +370,30 @@ export default function Templates() {
 
   const handleDelete = (template) => {
     if (window.confirm(`Are you sure you want to delete "${template.name}"?`)) {
-      setTemplates(templates.filter(t => t.id !== template.id))
+      deleteTemplate.mutate(template.id)
     }
   }
 
   const handleSetDefault = (template) => {
-    setTemplates(templates.map(t => ({
-      ...t,
-      is_default: t.id === template.id
-    })))
+    setDefaultTemplate.mutate(template.id)
   }
 
   const handleDuplicate = (template) => {
-    const newTemplate = {
-      ...template,
-      id: Date.now(),
-      name: `${template.name} (Copy)`,
-      is_default: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-    setTemplates([...templates, newTemplate])
+    duplicateTemplate.mutate(template.id)
   }
 
-  const handleSave = (templateData) => {
-    if (editingTemplate) {
-      setTemplates(templates.map(t => 
-        t.id === editingTemplate.id 
-          ? { ...t, ...templateData, updated_at: new Date().toISOString() }
-          : t
-      ))
-      setEditingTemplate(null)
-    } else {
-      const newTemplate = {
-        id: Date.now(),
-        ...templateData,
-        is_default: templates.length === 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+  const handleSave = async (templateData) => {
+    try {
+      if (editingTemplate) {
+        await updateTemplate.mutateAsync({ id: editingTemplate.id, data: templateData })
+        setEditingTemplate(null)
+      } else {
+        await createTemplate.mutateAsync(templateData)
+        setIsCreateModalOpen(false)
       }
-      setTemplates([...templates, newTemplate])
-      setIsCreateModalOpen(false)
+    } catch (error) {
+      // Error handling is done in the hooks
+      console.error('Template save error:', error)
     }
   }
 
@@ -413,6 +401,19 @@ export default function Templates() {
     setIsCreateModalOpen(false)
     setEditingTemplate(null)
     setPreviewingTemplate(null)
+  }
+
+  if (isLoading) {
+    return <PageLoader />
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-600 text-lg">Error loading templates</div>
+        <p className="text-gray-500 mt-2">{error.message}</p>
+      </div>
+    )
   }
 
   return (

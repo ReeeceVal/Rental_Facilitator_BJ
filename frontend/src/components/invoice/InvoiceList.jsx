@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { 
   FileText, 
   Download, 
@@ -8,24 +8,24 @@ import {
   Plus, 
   Eye,
   Filter,
-  Search
+  Search,
+  Camera
 } from 'lucide-react'
 import { useInvoices, useDeleteInvoice, useGenerateInvoicePDF } from '../../hooks/useInvoices'
 import { PageLoader } from '../shared/LoadingSpinner'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
-import Modal from '../ui/Modal'
 import { formatCurrency, formatDate, debounce } from '../../utils/helpers'
 import { 
   INVOICE_STATUS_COLORS, 
-  INVOICE_STATUS_LABELS, 
-  INVOICE_STATUSES 
+  INVOICE_STATUS_LABELS
 } from '../../utils/constants'
 
 export default function InvoiceList() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
+  const navigate = useNavigate()
 
   const debouncedSearch = debounce((value) => {
     setSearchTerm(value)
@@ -77,8 +77,8 @@ export default function InvoiceList() {
     )
   }
 
-  const invoices = data?.invoices || []
-  const pagination = data?.pagination
+  const invoices = data?.data?.invoices || []
+  const pagination = data?.data?.pagination
 
   return (
     <div className="space-y-6">
@@ -90,10 +90,17 @@ export default function InvoiceList() {
             View, edit, and manage your rental invoices
           </p>
         </div>
-        <div className="mt-4 sm:mt-0">
-          <Link to="/invoices/new" className="btn-primary">
+        <div className="mt-4 sm:mt-0 flex space-x-3">
+          <button
+            onClick={() => navigate('/invoices/new', { state: { showScanner: true } })}
+            className="btn-primary"
+          >
+            <Camera className="mr-2 h-4 w-4" />
+            Scan Image
+          </button>
+          <Link to="/invoices/new" className="btn-outline">
             <Plus className="mr-2 h-4 w-4" />
-            Create Invoice
+            Manual
           </Link>
         </div>
       </div>
@@ -161,7 +168,7 @@ export default function InvoiceList() {
                             {invoice.customer_phone && (
                               <span>• {invoice.customer_phone}</span>
                             )}
-                            <span>• {formatDate(invoice.rental_start_date)} - {formatDate(invoice.rental_end_date)}</span>
+                            <span>• {formatDate(invoice.rental_start_date)} ({invoice.rental_duration_days || 1} {(invoice.rental_duration_days || 1) === 1 ? 'day' : 'days'})</span>
                           </div>
                         </div>
                       </div>
@@ -284,12 +291,16 @@ export default function InvoiceList() {
           </p>
           {!searchTerm && !statusFilter && (
             <div className="mt-6 space-x-3">
-              <Link to="/upload" className="btn-primary">
-                <Plus className="mr-2 h-4 w-4" />
-                Upload Screenshot
-              </Link>
+              <button
+                onClick={() => navigate('/invoices/new', { state: { showScanner: true } })}
+                className="btn-primary"
+              >
+                <Camera className="mr-2 h-4 w-4" />
+                Scan Image
+              </button>
               <Link to="/invoices/new" className="btn-outline">
-                Create Manual Invoice
+                <Plus className="mr-2 h-4 w-4" />
+                Manual
               </Link>
             </div>
           )}

@@ -3,10 +3,10 @@ import { Link, useLocation } from 'react-router-dom'
 import { 
   Home, 
   Package, 
-  Upload, 
   FileText, 
   Settings, 
-  Menu, 
+  Calendar,
+  Users,
   X 
 } from 'lucide-react'
 import Header from './Header'
@@ -14,8 +14,9 @@ import Header from './Header'
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home },
   { name: 'Equipment', href: '/equipment', icon: Package },
-  { name: 'Upload', href: '/upload', icon: Upload },
   { name: 'Invoices', href: '/invoices', icon: FileText },
+  { name: 'Calendar', href: '/calendar', icon: Calendar },
+  { name: 'Employees', href: '/employees', icon: Users },
   { name: 'Templates', href: '/templates', icon: Settings },
 ]
 

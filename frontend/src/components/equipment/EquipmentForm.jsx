@@ -17,7 +17,6 @@ export default function EquipmentForm({ equipment, onSuccess }) {
       name: '',
       description: '',
       daily_rate: '',
-      weekly_rate: '',
       monthly_rate: '',
       category_id: '',
       stock_quantity: 1,
@@ -34,14 +33,21 @@ export default function EquipmentForm({ equipment, onSuccess }) {
 
   const onSubmit = async (data) => {
     try {
-      // Convert string values to numbers
+      // Convert string values to numbers and filter out empty optional fields
       const formattedData = {
-        ...data,
+        name: data.name,
+        description: data.description,
         daily_rate: parseFloat(data.daily_rate),
-        weekly_rate: data.weekly_rate ? parseFloat(data.weekly_rate) : null,
-        monthly_rate: data.monthly_rate ? parseFloat(data.monthly_rate) : null,
-        category_id: data.category_id ? parseInt(data.category_id) : null,
         stock_quantity: parseInt(data.stock_quantity),
+        is_active: data.is_active
+      }
+
+      // Only include optional fields if they have values
+      if (data.monthly_rate && data.monthly_rate.toString().trim() !== '') {
+        formattedData.monthly_rate = parseFloat(data.monthly_rate)
+      }
+      if (data.category_id && data.category_id.toString().trim() !== '') {
+        formattedData.category_id = parseInt(data.category_id)
       }
 
       if (isEditing) {
@@ -59,7 +65,6 @@ export default function EquipmentForm({ equipment, onSuccess }) {
   const isLoading = createEquipment.isLoading || updateEquipment.isLoading
 
   // Auto-calculate suggested rates based on daily rate
-  const suggestedWeeklyRate = watchDailyRate ? (parseFloat(watchDailyRate) * 6).toFixed(2) : ''
   const suggestedMonthlyRate = watchDailyRate ? (parseFloat(watchDailyRate) * 25).toFixed(2) : ''
 
   return (
@@ -121,7 +126,7 @@ export default function EquipmentForm({ equipment, onSuccess }) {
         {/* Daily Rate */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Daily Rate * ($)
+            Daily Rate * (R)
           </label>
           <Input
             type="number"
@@ -139,38 +144,13 @@ export default function EquipmentForm({ equipment, onSuccess }) {
           )}
         </div>
 
-        {/* Weekly Rate */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Weekly Rate ($)
-            {suggestedWeeklyRate && (
-              <span className="text-xs text-gray-500 ml-1">
-                (Suggested: ${suggestedWeeklyRate})
-              </span>
-            )}
-          </label>
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            {...register('weekly_rate', { 
-              min: { value: 0, message: 'Rate must be positive' }
-            })}
-            error={!!errors.weekly_rate}
-            placeholder={suggestedWeeklyRate || "300.00"}
-          />
-          {errors.weekly_rate && (
-            <p className="mt-1 text-sm text-red-600">{errors.weekly_rate.message}</p>
-          )}
-        </div>
-
         {/* Monthly Rate */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Monthly Rate ($)
+            Monthly Rate (R)
             {suggestedMonthlyRate && (
               <span className="text-xs text-gray-500 ml-1">
-                (Suggested: ${suggestedMonthlyRate})
+                (Suggested: R{suggestedMonthlyRate})
               </span>
             )}
           </label>

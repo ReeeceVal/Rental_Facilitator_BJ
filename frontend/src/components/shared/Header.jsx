@@ -6,7 +6,9 @@ const pageNames = {
   '/equipment': 'Equipment Management',
   '/upload': 'Upload Screenshot',
   '/invoices': 'Invoice Management',
-  '/templates': 'Invoice Templates'
+  '/templates': 'Invoice Templates',
+  '/calendar': 'Rental Calendar',
+  '/employees': 'Employees'
 }
 
 export default function Header({ onMenuClick }) {

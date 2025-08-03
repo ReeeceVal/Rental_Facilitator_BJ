@@ -10,12 +10,12 @@ const statusIcons = {
 
 const statusMessages = {
   [PROCESSING_STATUSES.PENDING]: 'Queued for processing...',
-  [PROCESSING_STATUSES.PROCESSING]: 'Analyzing screenshot with AI...',
+  [PROCESSING_STATUSES.PROCESSING]: 'AI Processing Image...',
   [PROCESSING_STATUSES.COMPLETED]: 'Processing completed successfully!',
   [PROCESSING_STATUSES.FAILED]: 'Processing failed. Please try again.',
 }
 
-export default function ProcessingStatus({ status, error, progress = null }) {
+export default function ProcessingStatus({ status, error }) {
   const Icon = statusIcons[status] || Clock
   const message = statusMessages[status] || 'Unknown status'
   const colorClass = PROCESSING_STATUS_COLORS[status] || 'bg-gray-100 text-gray-800'
@@ -49,41 +49,23 @@ export default function ProcessingStatus({ status, error, progress = null }) {
         </div>
       </div>
 
-      {/* Progress bar for processing */}
+      {/* Processing spinner */}
       {status === PROCESSING_STATUSES.PROCESSING && (
         <div className="mt-4">
-          <div className="flex justify-between text-sm text-gray-600 mb-2">
-            <span>Analyzing image...</span>
-            <span>{progress || ''}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-primary-600 h-2 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progress || 30}%` }}
-            />
+          <div className="flex items-center justify-center space-x-3 py-4">
+            <Loader2 className="h-6 w-6 text-blue-500 animate-spin" />
+            <span className="text-sm text-gray-600">AI is analyzing your image...</span>
           </div>
         </div>
       )}
 
-      {/* Processing steps */}
+      {/* Processing info */}
       {status === PROCESSING_STATUSES.PROCESSING && (
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center space-x-2 text-sm">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <span className="text-gray-600">Image uploaded successfully</span>
-          </div>
-          <div className="flex items-center space-x-2 text-sm">
-            <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
-            <span className="text-gray-600">Extracting text from image</span>
-          </div>
-          <div className="flex items-center space-x-2 text-sm">
-            <Clock className="h-4 w-4 text-gray-400" />
-            <span className="text-gray-400">Matching equipment to inventory</span>
-          </div>
-          <div className="flex items-center space-x-2 text-sm">
-            <Clock className="h-4 w-4 text-gray-400" />
-            <span className="text-gray-400">Generating invoice data</span>
-          </div>
+        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-md p-3">
+          <p className="text-sm text-blue-700">
+            Our AI is analyzing your image to extract customer information, rental dates, and equipment details. 
+            This usually takes 3-8 seconds depending on image complexity.
+          </p>
         </div>
       )}
     </div>

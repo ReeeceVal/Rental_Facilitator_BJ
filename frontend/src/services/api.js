@@ -84,6 +84,15 @@ export const invoicesAPI = {
   delete: (id) => api.delete(`/invoices/${id}`),
   generatePDF: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
   createAndGeneratePDF: (data) => api.post('/invoices/create-and-generate-pdf', data, { responseType: 'blob' }),
+  getCalendarEvents: (params = {}) => {
+    const searchParams = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        searchParams.append(key, value)
+      }
+    })
+    return api.get(`/invoices/calendar?${searchParams}`)
+  },
 }
 
 // Upload API
@@ -112,8 +121,11 @@ export const uploadAPI = {
 export const templatesAPI = {
   getAll: () => api.get('/templates'),
   getById: (id) => api.get(`/templates/${id}`),
+  getDefault: () => api.get('/templates/default/active'),
   create: (data) => api.post('/templates', data),
   update: (id, data) => api.put(`/templates/${id}`, data),
+  setDefault: (id) => api.put(`/templates/${id}/default`),
+  duplicate: (id) => api.post(`/templates/${id}/duplicate`),
   delete: (id) => api.delete(`/templates/${id}`),
 }
 

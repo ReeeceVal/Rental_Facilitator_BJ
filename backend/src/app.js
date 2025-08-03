@@ -11,7 +11,7 @@ const app = express();
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:5173', 'http://localhost:3000'],
+  origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'],
   credentials: true
 }));
 
@@ -48,6 +48,8 @@ app.get('/health', (req, res) => {
 app.use('/api/equipment', require('./routes/equipment'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/invoices', require('./routes/invoices'));
+app.use('/api/invoice', require('./routes/invoice-scanner'));
+app.use('/api/templates', require('./routes/templates'));
 app.use('/api/upload', require('./routes/upload'));
 
 // Error handling middleware

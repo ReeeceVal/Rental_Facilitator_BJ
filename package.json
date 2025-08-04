@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@playwright/test": "^1.54.2",
     "@tanstack/react-query-devtools": "^5.84.1"
   }
 }

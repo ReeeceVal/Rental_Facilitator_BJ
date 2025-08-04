@@ -8,7 +8,8 @@ const pageNames = {
   '/invoices': 'Invoice Management',
   '/templates': 'Invoice Templates',
   '/calendar': 'Rental Calendar',
-  '/employees': 'Employees'
+  '/employees': 'Employees',
+  '/commissions': 'Commission Reports'
 }
 
 export default function Header({ onMenuClick }) {

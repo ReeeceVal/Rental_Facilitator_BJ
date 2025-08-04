@@ -7,6 +7,7 @@ import {
   Settings, 
   Calendar,
   Users,
+  DollarSign,
   X 
 } from 'lucide-react'
 import Header from './Header'
@@ -17,6 +18,7 @@ const navigation = [
   { name: 'Invoices', href: '/invoices', icon: FileText },
   { name: 'Calendar', href: '/calendar', icon: Calendar },
   { name: 'Employees', href: '/employees', icon: Users },
+  { name: 'Commissions', href: '/commissions', icon: DollarSign },
   { name: 'Templates', href: '/templates', icon: Settings },
 ]
 

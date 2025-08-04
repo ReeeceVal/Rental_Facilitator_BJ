@@ -5,6 +5,54 @@ const { generateInvoiceNumber } = require('../utils/helpers');
 const pdfService = require('../services/pdfService');
 const router = express.Router();
 
+const calculateCommissions = async (invoiceId, totalAmount, client = pool) => {
+  try {
+    const assignments = await client.query(
+      'SELECT * FROM invoice_employee_assignments WHERE invoice_id = $1',
+      [invoiceId]
+    );
+
+    if (assignments.rows.length === 0) return;
+
+    const organizerAssignments = assignments.rows.filter(a => a.role === 'organizer');
+    const setupAssignments = assignments.rows.filter(a => a.role === 'setup');
+
+    const organizerCommission = 0.05; // 5%
+    const setupTotalCommission = 0.30; // 30% total
+    const setupIndividualCommission = setupAssignments.length > 0 ? 
+      setupTotalCommission / setupAssignments.length : 0;
+
+    // Update organizer assignments with commission calculations
+    for (const assignment of organizerAssignments) {
+      const commissionAmount = totalAmount * organizerCommission;
+      
+      await client.query(`
+        UPDATE invoice_employee_assignments 
+        SET commission_percentage = $1, 
+            commission_amount = $2,
+            base_amount = $3
+        WHERE id = $4
+      `, [organizerCommission * 100, commissionAmount, totalAmount, assignment.id]);
+    }
+
+    // Update setup assignments with commission calculations
+    for (const assignment of setupAssignments) {
+      const commissionAmount = totalAmount * setupIndividualCommission;
+      
+      await client.query(`
+        UPDATE invoice_employee_assignments 
+        SET commission_percentage = $1, 
+            commission_amount = $2,
+            base_amount = $3
+        WHERE id = $4
+      `, [setupIndividualCommission * 100, commissionAmount, totalAmount, assignment.id]);
+    }
+  } catch (error) {
+    console.error('Error calculating commissions:', error);
+    throw error;
+  }
+};
+
 // Validation middleware
 const invoiceValidation = [
   body('customer_id').isInt({ min: 1 }).withMessage('Valid customer ID is required'),
@@ -562,6 +610,118 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting invoice:', error);
     res.status(500).json({ error: 'Failed to delete invoice' });
+  }
+});
+
+router.post('/:id/assign-employees', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assignments } = req.body;
+
+    if (!assignments || !Array.isArray(assignments)) {
+      return res.status(400).json({ error: 'Assignments array is required' });
+    }
+
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+
+      await client.query('DELETE FROM invoice_employee_assignments WHERE invoice_id = $1', [id]);
+
+      for (const assignment of assignments) {
+        if (!assignment.employee_id || !assignment.role) {
+          continue;
+        }
+
+        await client.query(`
+          INSERT INTO invoice_employee_assignments (invoice_id, employee_id, role)
+          VALUES ($1, $2, $3)
+        `, [id, assignment.employee_id, assignment.role]);
+      }
+
+      const invoiceResult = await client.query('SELECT total_amount FROM invoices WHERE id = $1', [id]);
+      if (invoiceResult.rows.length > 0) {
+        await calculateCommissions(id, parseFloat(invoiceResult.rows[0].total_amount), client);
+      }
+
+      await client.query('COMMIT');
+
+      const assignmentsResult = await client.query(`
+        SELECT iea.*, e.name as employee_name
+        FROM invoice_employee_assignments iea
+        JOIN employees e ON iea.employee_id = e.id
+        WHERE iea.invoice_id = $1
+      `, [id]);
+
+      res.json({ 
+        message: 'Employees assigned successfully',
+        assignments: assignmentsResult.rows 
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error assigning employees:', error);
+    res.status(500).json({ error: 'Failed to assign employees' });
+  }
+});
+
+router.get('/:id/assignments', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(`
+      SELECT 
+        iea.*,
+        e.name as employee_name,
+        e.email as employee_email
+      FROM invoice_employee_assignments iea
+      JOIN employees e ON iea.employee_id = e.id
+      WHERE iea.invoice_id = $1
+      ORDER BY iea.role, e.name
+    `, [id]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching invoice assignments:', error);
+    res.status(500).json({ error: 'Failed to fetch invoice assignments' });
+  }
+});
+
+router.get('/:id/commissions', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(`
+      SELECT 
+        iea.*,
+        e.name as employee_name,
+        i.invoice_number,
+        c.name as customer_name
+      FROM invoice_employee_assignments iea
+      JOIN employees e ON iea.employee_id = e.id
+      JOIN invoices i ON iea.invoice_id = i.id
+      LEFT JOIN customers c ON i.customer_id = c.id
+      WHERE iea.invoice_id = $1
+        AND iea.commission_amount IS NOT NULL
+      ORDER BY iea.role, e.name
+    `, [id]);
+
+    const totalCommission = result.rows.reduce((sum, row) => {
+      return sum + parseFloat(row.commission_amount || 0);
+    }, 0);
+
+    res.json({
+      commissions: result.rows,
+      total_commission: totalCommission
+    });
+  } catch (error) {
+    console.error('Error fetching invoice commissions:', error);
+    res.status(500).json({ error: 'Failed to fetch invoice commissions' });
   }
 });
 

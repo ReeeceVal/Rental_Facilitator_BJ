@@ -17,7 +17,6 @@ export default function EquipmentForm({ equipment, onSuccess }) {
       name: '',
       description: '',
       daily_rate: '',
-      monthly_rate: '',
       category_id: '',
       stock_quantity: 1,
       is_active: true
@@ -29,7 +28,6 @@ export default function EquipmentForm({ equipment, onSuccess }) {
   const createEquipment = useCreateEquipment()
   const updateEquipment = useUpdateEquipment()
 
-  const watchDailyRate = watch('daily_rate')
 
   const onSubmit = async (data) => {
     try {
@@ -43,9 +41,6 @@ export default function EquipmentForm({ equipment, onSuccess }) {
       }
 
       // Only include optional fields if they have values
-      if (data.monthly_rate && data.monthly_rate.toString().trim() !== '') {
-        formattedData.monthly_rate = parseFloat(data.monthly_rate)
-      }
       if (data.category_id && data.category_id.toString().trim() !== '') {
         formattedData.category_id = parseInt(data.category_id)
       }
@@ -64,8 +59,6 @@ export default function EquipmentForm({ equipment, onSuccess }) {
 
   const isLoading = createEquipment.isLoading || updateEquipment.isLoading
 
-  // Auto-calculate suggested rates based on daily rate
-  const suggestedMonthlyRate = watchDailyRate ? (parseFloat(watchDailyRate) * 25).toFixed(2) : ''
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -144,30 +137,6 @@ export default function EquipmentForm({ equipment, onSuccess }) {
           )}
         </div>
 
-        {/* Monthly Rate */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Monthly Rate (R)
-            {suggestedMonthlyRate && (
-              <span className="text-xs text-gray-500 ml-1">
-                (Suggested: R{suggestedMonthlyRate})
-              </span>
-            )}
-          </label>
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            {...register('monthly_rate', { 
-              min: { value: 0, message: 'Rate must be positive' }
-            })}
-            error={!!errors.monthly_rate}
-            placeholder={suggestedMonthlyRate || "1000.00"}
-          />
-          {errors.monthly_rate && (
-            <p className="mt-1 text-sm text-red-600">{errors.monthly_rate.message}</p>
-          )}
-        </div>
 
         {/* Active Status */}
         <div>

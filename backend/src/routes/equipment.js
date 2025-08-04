@@ -8,7 +8,6 @@ const equipmentValidation = [
   body('name').notEmpty().trim().withMessage('Equipment name is required'),
   body('daily_rate').isFloat({ min: 0 }).withMessage('Daily rate must be a positive number'),
   body('category_id').optional().isInt({ min: 1 }).withMessage('Category ID must be a positive integer'),
-  body('monthly_rate').optional().isFloat({ min: 0 }).withMessage('Monthly rate must be a positive number'),
   body('stock_quantity').optional().isInt({ min: 0 }).withMessage('Stock quantity must be a non-negative integer'),
 ];
 
@@ -155,17 +154,16 @@ router.post('/', equipmentValidation, async (req, res) => {
       name,
       description,
       daily_rate,
-      monthly_rate,
       category_id,
       stock_quantity = 1,
       is_active = true
     } = req.body;
 
     const result = await pool.query(`
-      INSERT INTO equipment (name, description, daily_rate, monthly_rate, category_id, stock_quantity, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO equipment (name, description, daily_rate, category_id, stock_quantity, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
-    `, [name, description, daily_rate, monthly_rate, category_id, stock_quantity, is_active]);
+    `, [name, description, daily_rate, category_id, stock_quantity, is_active]);
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -190,7 +188,6 @@ router.put('/:id', equipmentValidation, async (req, res) => {
       name,
       description,
       daily_rate,
-      monthly_rate,
       category_id,
       stock_quantity,
       is_active
@@ -199,11 +196,11 @@ router.put('/:id', equipmentValidation, async (req, res) => {
     const result = await pool.query(`
       UPDATE equipment 
       SET name = $1, description = $2, daily_rate = $3, 
-          monthly_rate = $4, category_id = $5, stock_quantity = $6, 
-          is_active = $7, updated_at = NOW()
-      WHERE id = $8
+          category_id = $4, stock_quantity = $5, 
+          is_active = $6, updated_at = NOW()
+      WHERE id = $7
       RETURNING *
-    `, [name, description, daily_rate, monthly_rate, category_id, stock_quantity, is_active, id]);
+    `, [name, description, daily_rate, category_id, stock_quantity, is_active, id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Equipment not found' });

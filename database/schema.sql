@@ -15,8 +15,6 @@ CREATE TABLE equipment (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     daily_rate DECIMAL(10,2) NOT NULL,
-    weekly_rate DECIMAL(10,2),
-    monthly_rate DECIMAL(10,2),
     stock_quantity INTEGER DEFAULT 1,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),

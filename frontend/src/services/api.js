@@ -25,7 +25,13 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 429) {
-      console.error('Rate limit exceeded')
+      console.error('Rate limit exceeded - retrying after delay')
+      // Retry after 1 second for rate limit errors
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(api.request(error.config))
+        }, 1000)
+      })
     }
     return Promise.reject(error)
   }

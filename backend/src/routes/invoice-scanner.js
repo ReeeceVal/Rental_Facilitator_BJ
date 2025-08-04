@@ -37,7 +37,7 @@ function imageBufferToBase64(buffer, mimeType) {
 async function getAllEquipment() {
   try {
     const result = await pool.query(`
-      SELECT id, name, description, daily_rate, monthly_rate
+      SELECT id, name, description, daily_rate
       FROM equipment 
       WHERE is_active = true
       ORDER BY name ASC
@@ -129,6 +129,7 @@ Required fields:
 - equipment: array of objects with fields:
   - equipment_name: string (EXACT name/description of equipment as written)
   - quantity: number (quantity, default to 1 if not specified)
+  - daily_rate: number (daily rental rate/price if shown in document, null if not found)
 
 IMPORTANT for duration extraction:
 - Look for phrases like "1 day", "2 days", "3 day rental", "week", "weekend"
@@ -141,6 +142,9 @@ IMPORTANT for equipment extraction:
 - Do NOT modify or standardize the names
 - Include ALL equipment items mentioned
 - If quantity is mentioned (like "2x", "3 units", etc.), extract it accurately
+- Look for pricing information: rates, prices, costs per day/item (extract as daily_rate)
+- If pricing is shown per item or per day, extract the numeric value
+- If no pricing is visible for an item, set daily_rate to null
 
 Guidelines:
 - If a field is not found, set it to null or empty string
@@ -198,26 +202,38 @@ Return only valid JSON, no explanations.`;
           const matchedEquipment = findClosestEquipment(item.equipment_name, allEquipment);
           
           if (matchedEquipment) {
+            // Use price from image if available, otherwise use database price
+            const finalDailyRate = (item.daily_rate && item.daily_rate > 0) 
+              ? parseFloat(item.daily_rate) 
+              : parseFloat(matchedEquipment.daily_rate);
+            
             return {
               equipment_id: matchedEquipment.id,
               equipment_name: matchedEquipment.name,
               description: matchedEquipment.description,
-              daily_rate: parseFloat(matchedEquipment.daily_rate),
-              monthly_rate: parseFloat(matchedEquipment.monthly_rate || 0),
+              daily_rate: finalDailyRate,
               quantity: item.quantity || 1,
               extracted_name: item.equipment_name, // Keep original for reference
+              extracted_price: item.daily_rate || null, // Keep original price for reference
+              price_source: (item.daily_rate && item.daily_rate > 0) ? 'image' : 'database',
               match_confidence: 'matched'
             };
           } else {
             // No match found - return as unmatched for manual review
+            // Use extracted price if available, otherwise default to 0
+            const finalDailyRate = (item.daily_rate && item.daily_rate > 0) 
+              ? parseFloat(item.daily_rate) 
+              : 0;
+            
             return {
               equipment_id: null,
               equipment_name: item.equipment_name,
               description: '',
-              daily_rate: 0,
-              monthly_rate: 0,
+              daily_rate: finalDailyRate,
               quantity: item.quantity || 1,
               extracted_name: item.equipment_name,
+              extracted_price: item.daily_rate || null,
+              price_source: (item.daily_rate && item.daily_rate > 0) ? 'image' : 'default',
               match_confidence: 'no_match'
             };
           }

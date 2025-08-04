@@ -55,19 +55,47 @@ export default function EmployeeAssignment({
   };
 
   const handleSearchChange = async (index, searchTerm) => {
-    // Update search term immediately
-    handleAssignmentChange(index, 'searchTerm', searchTerm);
+    // Update search term immediately in local state
+    const updatedAssignments = localAssignments.map((assignment, i) => {
+      if (i === index) {
+        return { ...assignment, searchTerm };
+      }
+      return assignment;
+    });
+    setLocalAssignments(updatedAssignments);
+    onAssignmentsChange?.(updatedAssignments);
     
     if (searchTerm.length >= 2) {
       try {
         const results = await searchEmployees(searchTerm);
-        handleAssignmentChange(index, 'employeeOptions', results);
+        const updatedWithOptions = updatedAssignments.map((assignment, i) => {
+          if (i === index) {
+            return { ...assignment, employeeOptions: results };
+          }
+          return assignment;
+        });
+        setLocalAssignments(updatedWithOptions);
+        onAssignmentsChange?.(updatedWithOptions);
       } catch (error) {
         console.error('Error searching employees:', error);
-        handleAssignmentChange(index, 'employeeOptions', []);
+        const updatedWithEmptyOptions = updatedAssignments.map((assignment, i) => {
+          if (i === index) {
+            return { ...assignment, employeeOptions: [] };
+          }
+          return assignment;
+        });
+        setLocalAssignments(updatedWithEmptyOptions);
+        onAssignmentsChange?.(updatedWithEmptyOptions);
       }
     } else {
-      handleAssignmentChange(index, 'employeeOptions', []);
+      const updatedWithEmptyOptions = updatedAssignments.map((assignment, i) => {
+        if (i === index) {
+          return { ...assignment, employeeOptions: [] };
+        }
+        return assignment;
+      });
+      setLocalAssignments(updatedWithEmptyOptions);
+      onAssignmentsChange?.(updatedWithEmptyOptions);
     }
   };
 
@@ -152,9 +180,20 @@ export default function EmployeeAssignment({
                       const inputValue = e.target.value;
                       
                       // If employee is selected and user starts typing, clear the selection
-                      if (assignment.employee_name) {
-                        handleAssignmentChange(index, 'employee_id', '');
-                        handleAssignmentChange(index, 'employee_name', '');
+                      if (assignment.employee_name && inputValue !== assignment.employee_name) {
+                        const updatedAssignments = localAssignments.map((a, i) => {
+                          if (i === index) {
+                            return {
+                              ...a,
+                              employee_id: '',
+                              employee_name: '',
+                              searchTerm: inputValue
+                            };
+                          }
+                          return a;
+                        });
+                        setLocalAssignments(updatedAssignments);
+                        onAssignmentsChange?.(updatedAssignments);
                       }
                       
                       // Perform search

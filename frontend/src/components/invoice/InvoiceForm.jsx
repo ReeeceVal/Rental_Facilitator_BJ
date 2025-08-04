@@ -573,8 +573,17 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                             min="1"
                             value={item.quantity}
                             onChange={(e) => {
-                              handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)
-                              setTimeout(() => updateItemTotal(index), 0)
+                              const inputValue = e.target.value
+                              const newQuantity = inputValue === '' ? '' : (parseInt(inputValue) || 1)
+                              const item = formData.items[index]
+                              const numericQuantity = typeof newQuantity === 'string' ? 1 : newQuantity
+                              const newTotal = numericQuantity * (item.daily_rate || 0) * (item.days || 1)
+                              setFormData(prev => ({
+                                ...prev,
+                                items: prev.items.map((item, i) => 
+                                  i === index ? { ...item, quantity: newQuantity, total: newTotal } : item
+                                )
+                              }))
                             }}
                           />
                         </div>
@@ -588,8 +597,17 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                             min="1"
                             value={item.days}
                             onChange={(e) => {
-                              handleItemChange(index, 'days', parseInt(e.target.value) || 1)
-                              setTimeout(() => updateItemTotal(index), 0)
+                              const inputValue = e.target.value
+                              const newDays = inputValue === '' ? '' : (parseInt(inputValue) || 1)
+                              const item = formData.items[index]
+                              const numericDays = typeof newDays === 'string' ? 1 : newDays
+                              const newTotal = (item.quantity || 1) * (item.daily_rate || 0) * numericDays
+                              setFormData(prev => ({
+                                ...prev,
+                                items: prev.items.map((item, i) => 
+                                  i === index ? { ...item, days: newDays, total: newTotal } : item
+                                )
+                              }))
                             }}
                           />
                         </div>
@@ -604,8 +622,17 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                             min="0"
                             value={item.daily_rate}
                             onChange={(e) => {
-                              handleItemChange(index, 'daily_rate', parseFloat(e.target.value) || 0)
-                              setTimeout(() => updateItemTotal(index), 0)
+                              const inputValue = e.target.value
+                              const newRate = inputValue === '' ? '' : (parseFloat(inputValue) || 0)
+                              const item = formData.items[index]
+                              const numericRate = typeof newRate === 'string' ? 0 : newRate
+                              const newTotal = (item.quantity || 1) * numericRate * (item.days || 1)
+                              setFormData(prev => ({
+                                ...prev,
+                                items: prev.items.map((item, i) => 
+                                  i === index ? { ...item, daily_rate: newRate, total: newTotal } : item
+                                )
+                              }))
                             }}
                           />
                         </div>

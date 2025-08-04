@@ -13,6 +13,7 @@ import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import Modal from '../components/ui/Modal'
 import LoadingSpinner from '../components/shared/LoadingSpinner'
+import PaidCommissions from '../components/PaidCommissions'
 import { useEmployees } from '../hooks/useEmployees'
 import { formatCurrency, formatDate } from '../utils/helpers'
 import { API_BASE_URL } from '../utils/constants'
@@ -29,6 +30,7 @@ export default function CommissionReports() {
   const [selectedEmployeeForPayment, setSelectedEmployeeForPayment] = useState(null)
   const [paymentBatchId, setPaymentBatchId] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   // Set default date range (current month)
   useEffect(() => {
@@ -107,6 +109,7 @@ export default function CommissionReports() {
         setPaymentBatchId('')
         setPaymentNotes('')
         fetchUnpaidCommissions() // Refresh the list
+        setRefreshTrigger(prev => prev + 1) // Trigger paid commissions refresh
       }
     } catch (error) {
       console.error('Error marking commissions as paid:', error)
@@ -289,6 +292,14 @@ export default function CommissionReports() {
           )}
         </div>
       </div>
+
+      {/* Paid Commissions Section */}
+      <PaidCommissions 
+        startDate={startDate}
+        endDate={endDate}
+        selectedEmployee={selectedEmployee}
+        refreshTrigger={refreshTrigger}
+      />
 
       {/* Commission Reports */}
       <div className="card">

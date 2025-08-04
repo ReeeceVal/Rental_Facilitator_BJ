@@ -11,13 +11,12 @@ import {
   Search,
   Camera
 } from 'lucide-react'
-import { useInvoices, useDeleteInvoice, useGenerateInvoicePDF } from '../../hooks/useInvoices'
+import { useInvoices, useDeleteInvoice, useGenerateInvoicePDF, useUpdateInvoice } from '../../hooks/useInvoices'
 import { PageLoader } from '../shared/LoadingSpinner'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import { formatCurrency, formatDate, debounce } from '../../utils/helpers'
 import { 
-  INVOICE_STATUS_COLORS, 
   INVOICE_STATUS_LABELS
 } from '../../utils/constants'
 
@@ -41,6 +40,7 @@ export default function InvoiceList() {
 
   const deleteInvoice = useDeleteInvoice()
   const generatePDF = useGenerateInvoicePDF()
+  const updateInvoice = useUpdateInvoice()
 
   const handleSearch = (e) => {
     debouncedSearch(e.target.value)
@@ -62,6 +62,44 @@ export default function InvoiceList() {
       await generatePDF.mutateAsync(invoice.id)
     } catch (error) {
       // Error is handled by the hook
+    }
+  }
+
+  const handleTogglePaymentStatus = async (invoice) => {
+    const newStatus = invoice.status === 'paid' ? 'draft' : 'paid'
+    
+    try {
+      const response = await fetch(`/api/invoices/${invoice.id}`)
+      const fullInvoiceData = await response.json()
+      
+      // Check different possible response structures
+      let invoiceData = null
+      if (fullInvoiceData.success && fullInvoiceData.data) {
+        invoiceData = fullInvoiceData.data
+      } else if (fullInvoiceData.data) {
+        invoiceData = fullInvoiceData.data
+      } else if (fullInvoiceData.invoice) {
+        invoiceData = fullInvoiceData.invoice
+      } else {
+        invoiceData = fullInvoiceData
+      }
+      
+      if (invoiceData && invoiceData.customer_id) {
+        await updateInvoice.mutateAsync({
+          id: invoice.id,
+          data: {
+            customer_id: invoiceData.customer_id,
+            rental_start_date: invoiceData.rental_start_date,
+            rental_end_date: invoiceData.rental_end_date,
+            items: invoiceData.items || [],
+            notes: invoiceData.notes || '',
+            tax_amount: invoiceData.tax_amount || 0,
+            status: newStatus
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Error toggling payment status:', error)
     }
   }
 
@@ -159,9 +197,26 @@ export default function InvoiceList() {
                             <p className="text-lg font-medium text-gray-900">
                               {invoice.invoice_number}
                             </p>
-                            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${INVOICE_STATUS_COLORS[invoice.status]}`}>
-                              {INVOICE_STATUS_LABELS[invoice.status]}
-                            </span>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-sm text-gray-600">
+                                {invoice.status === 'paid' ? 'Paid' : 'Unpaid'}
+                              </span>
+                              <button
+                                onClick={() => handleTogglePaymentStatus(invoice)}
+                                disabled={updateInvoice.isLoading}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
+                                  invoice.status === 'paid' 
+                                    ? 'bg-green-600' 
+                                    : 'bg-gray-200'
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    invoice.status === 'paid' ? 'translate-x-6' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            </div>
                           </div>
                           <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
                             <span>{invoice.customer_name}</span>

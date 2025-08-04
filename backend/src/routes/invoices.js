@@ -321,7 +321,7 @@ router.post('/', invoiceValidation, async (req, res) => {
       return sum + (item.daily_rate * item.quantity * item.rental_days);
     }, 0);
     
-    const total_amount = subtotal + tax_amount;
+    const total_amount = subtotal + parseFloat(tax_amount);
     const invoice_number = generateInvoiceNumber();
 
     // Create invoice
@@ -393,7 +393,7 @@ router.put('/:id', invoiceValidation, async (req, res) => {
       return sum + (item.daily_rate * item.quantity * item.rental_days);
     }, 0);
     
-    const total_amount = subtotal + tax_amount;
+    const total_amount = subtotal + parseFloat(tax_amount);
 
     // Update invoice
     const invoiceResult = await client.query(`
@@ -516,7 +516,7 @@ router.post('/create-and-generate-pdf', async (req, res) => {
       return sum + (item.daily_rate * item.quantity * item.rental_days);
     }, 0);
     
-    const total_amount = subtotal + tax_amount;
+    const total_amount = subtotal + parseFloat(tax_amount);
     const invoice_number = generateInvoiceNumber();
 
     // Create invoice
@@ -536,19 +536,32 @@ router.post('/create-and-generate-pdf', async (req, res) => {
       
       let equipment_id = item.equipment_id;
       
-      // If equipment_id not provided, create equipment from name
+      // If equipment_id not provided, check if equipment exists by name first
       if (!equipment_id && item.equipment_name) {
-        const equipmentResult = await client.query(`
-          INSERT INTO equipment (name, description, daily_rate, stock_quantity) 
-          VALUES ($1, $2, $3, $4) 
-          RETURNING id
-        `, [
-          item.equipment_name,
-          item.description || '',
-          item.daily_rate,
-          item.quantity
-        ]);
-        equipment_id = equipmentResult.rows[0].id;
+        // First try to find existing equipment by name (case-insensitive)
+        const existingEquipment = await client.query(`
+          SELECT id FROM equipment 
+          WHERE LOWER(name) = LOWER($1) AND is_active = true
+          LIMIT 1
+        `, [item.equipment_name.trim()]);
+        
+        if (existingEquipment.rows.length > 0) {
+          // Use existing equipment
+          equipment_id = existingEquipment.rows[0].id;
+        } else {
+          // Only create new equipment if none exists with this name
+          const equipmentResult = await client.query(`
+            INSERT INTO equipment (name, description, daily_rate, stock_quantity) 
+            VALUES ($1, $2, $3, $4) 
+            RETURNING id
+          `, [
+            item.equipment_name.trim(),
+            item.description || '',
+            item.daily_rate,
+            item.quantity || 1
+          ]);
+          equipment_id = equipmentResult.rows[0].id;
+        }
       }
       
       await client.query(`

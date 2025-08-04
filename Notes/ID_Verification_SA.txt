@@ -1,0 +1,92 @@
+✅ South African Services with APIs
+1. Secure Citizen – ✅ Full API Access
+Website: securecitizen.co.za
+
+API Features:
+
+Verify SA ID numbers against Home Affairs
+
+Liveness detection (selfie vs ID photo)
+
+Biometric facial matching
+
+Criminal checks (via SAFPS)
+
+Immigration status and KYC services
+
+Integration: REST API, real-time responses
+
+Use case: Plug directly into your onboarding or check-in system. You can build your own UI and call their services via secure endpoints.
+
+2. Contactable – ✅ Developer API Portal
+Website: contactable.co.za
+
+API Features:
+
+ID number validation via Home Affairs
+
+Biometric check and selfie upload
+
+Watchlist (FICA/AML) screening
+
+Digital KYC profile creation
+
+Integration: Full REST API with documentation for developers
+
+Use case: You can build seamless onboarding flows or automate customer approvals. It’s very modular and cloud-native.
+
+3. IDMERIT – ✅ Global Identity Verification API
+Website: idmerit.com
+
+API Features:
+
+SA ID and driver’s license verification
+
+Passport validation
+
+Utility and telecom record checks
+
+Facial recognition + fraud scoring
+
+Integration: Fully documented REST API
+
+Use case: Ideal for both local and international customers in your rental system.
+
+⚙️ International Tools with SDKs/APIs
+4. Onfido – ✅ Yes
+Website: onfido.com
+
+API + SDKs:
+
+REST API + React Native, iOS, Android SDKs
+
+ID document scanning + selfie video check
+
+Fraud detection + liveness assurance
+
+Use case: Plug-and-play for rental flows, ideal for mobile apps.
+
+5. Veriff – ✅ Yes
+Website: veriff.com
+
+API + SDKs:
+
+Full REST API + mobile SDKs
+
+Biometric checks, ID verification, fraud scoring
+
+Use case: Slick UX, good for apps with a modern UI/UX layer.
+
+6. AU10TIX – ✅ Yes (Enterprise-level)
+Website: au10tix.com
+
+API Features:
+
+ID scan + selfie
+
+AML/PEP watchlist
+
+Risk scoring
+
+Use case: Designed for larger organizations, but powerful for enterprise-grade rental platforms.
+

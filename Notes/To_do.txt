@@ -1,0 +1,4 @@
+- ID verification upload 
+- Rental contract integration  (Digital contract that uses nfc scanning from rentee and/or customer devices...)
+- NFC tag rental integration 
+- Community equipment upload 

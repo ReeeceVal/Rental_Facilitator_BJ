@@ -128,6 +128,85 @@ router.get('/unpaid-commissions', async (req, res) => {
   }
 });
 
+// Get paid commissions for all employees (grouped by payment batch)
+router.get('/paid-commissions', async (req, res) => {
+  try {
+    const { start_date, end_date, employee_id, payment_batch_id } = req.query;
+    
+    let query = `
+      SELECT 
+        e.id as employee_id,
+        e.name as employee_name,
+        e.email,
+        iea.payment_batch_id,
+        iea.paid_at,
+        iea.notes as payment_notes,
+        SUM(iea.commission_amount) as total_paid,
+        COUNT(iea.id) as invoice_count,
+        MIN(i.rental_start_date) as oldest_invoice_date,
+        MAX(i.rental_start_date) as newest_invoice_date,
+        array_agg(
+          json_build_object(
+            'id', iea.id,
+            'invoice_id', i.id,
+            'invoice_number', i.invoice_number,
+            'customer_name', c.name, 
+            'rental_start_date', i.rental_start_date,
+            'role', iea.role,
+            'commission_amount', iea.commission_amount,
+            'commission_percentage', iea.commission_percentage,
+            'base_amount', iea.base_amount
+          ) ORDER BY i.rental_start_date DESC
+        ) as commission_details
+      FROM invoice_employee_assignments iea
+      JOIN employees e ON iea.employee_id = e.id
+      JOIN invoices i ON iea.invoice_id = i.id
+      LEFT JOIN customers c ON i.customer_id = c.id
+      WHERE iea.commission_amount > 0
+        AND iea.paid_at IS NOT NULL
+    `;
+    
+    const queryParams = [];
+    let paramCount = 0;
+
+    if (start_date) {
+      paramCount++;
+      query += ` AND iea.paid_at >= $${paramCount}`;
+      queryParams.push(start_date);
+    }
+
+    if (end_date) {
+      paramCount++;
+      query += ` AND iea.paid_at <= $${paramCount}`;
+      queryParams.push(end_date);
+    }
+
+    if (employee_id) {
+      paramCount++;
+      query += ` AND e.id = $${paramCount}`;
+      queryParams.push(employee_id);
+    }
+
+    if (payment_batch_id) {
+      paramCount++;
+      query += ` AND iea.payment_batch_id = $${paramCount}`;
+      queryParams.push(payment_batch_id);
+    }
+
+    query += `
+      GROUP BY e.id, e.name, e.email, iea.payment_batch_id, iea.paid_at, iea.notes
+      ORDER BY iea.paid_at DESC, e.name ASC
+    `;
+
+    const result = await pool.query(query, queryParams);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching paid commissions:', error);
+    res.status(500).json({ error: 'Failed to fetch paid commissions' });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;

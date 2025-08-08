@@ -5,6 +5,7 @@ import Modal, { ModalFooter } from '../components/ui/Modal'
 import Input, { Textarea } from '../components/ui/Input'
 import { PageLoader } from '../components/shared/LoadingSpinner'
 import InvoicePreview from '../components/invoice/InvoicePreview'
+import LogoUpload from '../components/upload/LogoUpload'
 import { 
   useTemplates, 
   useCreateTemplate, 
@@ -100,11 +101,18 @@ function TemplateCard({ template, onEdit, onDelete, onSetDefault, onDuplicate, o
 
           <div className="pt-3 border-t border-gray-200">
             <div className="flex items-center space-x-4">
-              <div 
-                className="w-6 h-6 rounded"
-                style={{ backgroundColor: template.template_data.headerColor }}
-                title="Header Color"
-              />
+              <div className="flex items-center space-x-2">
+                <div 
+                  className="w-6 h-6 rounded"
+                  style={{ backgroundColor: template.template_data.headerColor }}
+                  title={`Accent Color: ${template.template_data.headerColor}`}
+                />
+                <div 
+                  className="w-6 h-6 rounded border border-gray-300"
+                  style={{ backgroundColor: template.template_data.backgroundColor || '#FFFFFF' }}
+                  title={`Background Color: ${template.template_data.backgroundColor || '#FFFFFF'}`}
+                />
+              </div>
               <span className="text-sm text-gray-500">
                 Prefix: {template.template_data.invoiceNumberPrefix}
               </span>
@@ -125,13 +133,20 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
     companyAddress: '',
     companyPhone: '',
     companyEmail: '',
+    logoData: null,
     headerColor: '#2563eb',
-    accentColor: '#1d4ed8',
-    footerText: '',
+    backgroundColor: '#FFFFFF',
     termsAndConditions: '',
     taxRate: 0.08,
-    currency: 'USD',
-    invoiceNumberPrefix: 'INV-'
+    currency: 'ZAR',
+    invoiceNumberPrefix: 'INV-',
+    paymentTerms: 'Due prior to rental',
+    bankName: '',
+    accountName: '',
+    accountNumber: '',
+    routingNumber: '',
+    iban: '',
+    swiftCode: ''
   })
   
   const [templateName, setTemplateName] = useState('')
@@ -145,13 +160,20 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
         companyAddress: '',
         companyPhone: '',
         companyEmail: '',
+        logoData: null,
         headerColor: '#2563eb',
-        accentColor: '#1d4ed8',
-        footerText: '',
+        backgroundColor: '#FFFFFF',
         termsAndConditions: '',
         taxRate: 0.08,
-        currency: 'USD',
-        invoiceNumberPrefix: 'INV-'
+        currency: 'ZAR',
+        invoiceNumberPrefix: 'INV-',
+        paymentTerms: 'Due prior to rental',
+        bankName: '',
+        accountName: '',
+        accountNumber: '',
+        routingNumber: '',
+        iban: '',
+        swiftCode: ''
       })
       setTemplateName(template.name || '')
     } else {
@@ -161,13 +183,20 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
         companyAddress: '',
         companyPhone: '',
         companyEmail: '',
+        logoData: null,
         headerColor: '#2563eb',
-        accentColor: '#1d4ed8',
-        footerText: '',
+        backgroundColor: '#FFFFFF',
         termsAndConditions: '',
         taxRate: 0.08,
-        currency: 'USD',
-        invoiceNumberPrefix: 'INV-'
+        currency: 'ZAR',
+        invoiceNumberPrefix: 'INV-',
+        paymentTerms: 'Due prior to rental',
+        bankName: '',
+        accountName: '',
+        accountNumber: '',
+        routingNumber: '',
+        iban: '',
+        swiftCode: ''
       })
       setTemplateName('')
     }
@@ -261,13 +290,49 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Header Color
+              Accent Color
             </label>
             <Input
               type="color"
               value={formData.headerColor}
               onChange={(e) => setFormData({...formData, headerColor: e.target.value})}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Background Color
+            </label>
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { hex: '#E3D7BD', name: 'Warm Beige' },
+                  { hex: '#EBE6D9', name: 'Light Cream' },
+                  { hex: '#F6F3E7', name: 'Off White' },
+                  { hex: '#FFFFFF', name: 'Pure White' },
+                  { hex: '#F0E2CE', name: 'Soft Cream' },
+                  { hex: '#D3D0C9', name: 'Light Gray' }
+                ].map((color) => (
+                  <button
+                    key={color.hex}
+                    type="button"
+                    className={`w-full h-12 rounded-md border-2 transition-all ${
+                      formData.backgroundColor === color.hex 
+                        ? 'border-primary-500 shadow-md' 
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    style={{ backgroundColor: color.hex }}
+                    onClick={() => setFormData({...formData, backgroundColor: color.hex})}
+                    title={`${color.name} (${color.hex})`}
+                  >
+                    <span className="sr-only">{color.name}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-sm text-gray-500">
+                Current: {formData.backgroundColor}
+              </p>
+            </div>
           </div>
 
           <div>
@@ -286,6 +351,13 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
         </div>
 
         <div>
+          <LogoUpload
+            onLogoChange={(logoData) => setFormData({...formData, logoData})}
+            currentLogo={formData.logoData}
+          />
+        </div>
+
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Company Address
           </label>
@@ -297,15 +369,19 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
           />
         </div>
 
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Footer Text
+            Payment Terms
           </label>
           <Input
-            value={formData.footerText}
-            onChange={(e) => setFormData({...formData, footerText: e.target.value})}
-            placeholder="Thank you for your business!"
+            value={formData.paymentTerms}
+            onChange={(e) => setFormData({...formData, paymentTerms: e.target.value})}
+            placeholder="Due prior to rental"
           />
+          <p className="mt-1 text-sm text-gray-500">
+            This text will appear below the "Payment Terms" section on invoices.
+          </p>
         </div>
 
         <div>
@@ -318,6 +394,82 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
             placeholder="Enter your terms and conditions..."
             rows={4}
           />
+        </div>
+
+        {/* Banking Details Section */}
+        <div className="border-t border-gray-200 pt-6">
+          <h4 className="text-lg font-medium text-gray-900 mb-4">Banking Details</h4>
+          <p className="text-sm text-gray-500 mb-4">
+            Add your banking information to display on invoices for payment instructions.
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Bank Name
+              </label>
+              <Input
+                value={formData.bankName}
+                onChange={(e) => setFormData({...formData, bankName: e.target.value})}
+                placeholder="e.g., Chase Bank"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Account Holder Name
+              </label>
+              <Input
+                value={formData.accountName}
+                onChange={(e) => setFormData({...formData, accountName: e.target.value})}
+                placeholder="e.g., Sound Rental Pro LLC"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Account Number
+              </label>
+              <Input
+                value={formData.accountNumber}
+                onChange={(e) => setFormData({...formData, accountNumber: e.target.value})}
+                placeholder="e.g., 123456789"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Routing Number
+              </label>
+              <Input
+                value={formData.routingNumber}
+                onChange={(e) => setFormData({...formData, routingNumber: e.target.value})}
+                placeholder="e.g., 021000021"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                IBAN <span className="text-gray-400">(Optional)</span>
+              </label>
+              <Input
+                value={formData.iban}
+                onChange={(e) => setFormData({...formData, iban: e.target.value})}
+                placeholder="e.g., GB82 WEST 1234 5698 7654 32"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                SWIFT/BIC Code <span className="text-gray-400">(Optional)</span>
+              </label>
+              <Input
+                value={formData.swiftCode}
+                onChange={(e) => setFormData({...formData, swiftCode: e.target.value})}
+                placeholder="e.g., CHASUS33"
+              />
+            </div>
+          </div>
         </div>
 
             <ModalFooter>

@@ -332,7 +332,6 @@ router.get('/:id/assignments', async (req, res) => {
         iea.*,
         i.invoice_number,
         i.rental_start_date,
-        i.rental_end_date,
         i.total_amount,
         i.status,
         c.name as customer_name
@@ -375,7 +374,6 @@ router.get('/:id/commissions', async (req, res) => {
         iea.*,
         i.invoice_number,
         i.rental_start_date,
-        i.rental_end_date,
         c.name as customer_name
       FROM invoice_employee_assignments iea
       JOIN invoices i ON iea.invoice_id = i.id
@@ -395,7 +393,7 @@ router.get('/:id/commissions', async (req, res) => {
 
     if (end_date) {
       paramCount++;
-      query += ` AND i.rental_end_date <= $${paramCount}`;
+      query += ` AND i.rental_start_date + INTERVAL '1 day' * i.rental_duration_days <= $${paramCount}`;
       queryParams.push(end_date);
     }
 

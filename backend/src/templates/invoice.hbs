@@ -11,30 +11,69 @@
             box-sizing: border-box;
         }
         
+        html {
+            height: 100%;
+            background: {{#if templateConfig.backgroundColor}}{{templateConfig.backgroundColor}}{{else}}#fff{{/if}};
+        }
+        
         body {
             font-family: 'Arial', sans-serif;
             line-height: 1.6;
             color: #333;
-            background: #fff;
+            background: {{#if templateConfig.backgroundColor}}{{templateConfig.backgroundColor}}{{else}}#fff{{/if}};
+            margin: 0;
+            padding: 0;
         }
         
         .invoice-container {
-            max-width: 800px;
-            margin: 0 auto;
+            width: 100%;
+            margin: 0;
             padding: 40px;
+            min-height: 100vh;
+            background: {{#if templateConfig.backgroundColor}}{{templateConfig.backgroundColor}}{{else}}#fff{{/if}};
         }
         
         .header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 40px;
-            border-bottom: 3px solid #2563eb;
-            padding-bottom: 20px;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid {{templateConfig.headerColor}};
+        }
+
+        .invoice-title-section {
+            flex: 1;
+        }
+
+        .invoice-title-section h1 {
+            font-size: 36px;
+            font-weight: bold;
+            color: #374151;
+            margin: 0 0 15px 0;
+        }
+
+        .invoice-details {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #374151;
+        }
+
+        .invoice-details strong {
+            color: #111;
+            display: inline-block;
+            width: 120px;
+        }
+
+        .logo-company-section {
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
         }
         
         .company-info h1 {
-            color: #2563eb;
+            color: #374151;
             font-size: 32px;
             font-weight: bold;
             margin-bottom: 10px;
@@ -62,49 +101,54 @@
         
         .invoice-number {
             font-weight: bold;
-            color: #2563eb;
+            color: #374151;
         }
         
         .billing-section {
             display: flex;
             justify-content: space-between;
-            margin: 40px 0;
+            margin: 8px 0;
         }
         
         .billing-info h3 {
             color: #374151;
-            margin-bottom: 10px;
-            font-size: 16px;
+            margin-bottom: 2px;
+            font-size: 14px;
+            font-weight: bold;
         }
         
         .billing-info p {
             margin: 3px 0;
             color: #6b7280;
+            font-weight: normal;
         }
         
         .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin: 40px 0;
+            margin: 8px 0;
         }
         
         .items-table th {
-            background-color: #f3f4f6;
+            background-color: transparent;
             color: #374151;
             font-weight: bold;
-            padding: 15px 10px;
-            text-align: left;
-            border-bottom: 2px solid #e5e7eb;
+            padding: 8px 6px;
+            border-bottom: 2px solid {{templateConfig.headerColor}};
+            font-size: 12px;
         }
         
         .items-table td {
-            padding: 12px 10px;
-            border-bottom: 1px solid #e5e7eb;
+            padding: 6px 6px;
+            border-bottom: 1px solid transparent;
+            font-size: 12px;
+            line-height: 1.3;
         }
         
-        .items-table tr:nth-child(even) {
-            background-color: #f9fafb;
+        .items-table tbody tr:last-child td {
+            border-bottom: 2px solid {{templateConfig.headerColor}};
         }
+        
         
         .text-right {
             text-align: right;
@@ -114,8 +158,12 @@
             text-align: center;
         }
         
+        .text-left {
+            text-align: left;
+        }
+        
         .totals-section {
-            margin-top: 40px;
+            margin-top: 8px;
             display: flex;
             justify-content: flex-end;
         }
@@ -125,22 +173,29 @@
         }
         
         .totals-table td {
-            padding: 8px 0;
-            border-bottom: 1px solid #e5e7eb;
+            padding: 4px 0;
+            border-bottom: 1px solid transparent;
+            font-size: 12px;
         }
+        
         
         .totals-table .total-row {
             font-weight: bold;
-            font-size: 18px;
-            border-top: 2px solid #2563eb;
-            border-bottom: 3px double #2563eb;
+            font-size: 12px;
+            border-top: 2px solid transparent;
+            border-bottom: 3px double transparent;
         }
         
         .notes-section {
-            margin-top: 40px;
-            padding: 20px;
-            background-color: #f9fafb;
-            border-left: 4px solid #2563eb;
+            margin-top: 8px;
+            padding: 0;
+        }
+
+        .terms-section {
+            margin-top: 8px;
+            padding: 0;
+            font-size: 11px;
+            color: #374151;
         }
         
         .notes-section h3 {
@@ -149,8 +204,8 @@
         }
         
         .footer {
-            margin-top: 60px;
-            padding-top: 20px;
+            margin-top: 15px;
+            padding-top: 10px;
             border-top: 1px solid #e5e7eb;
             text-align: center;
             color: #6b7280;
@@ -191,45 +246,71 @@
     <div class="invoice-container">
         <!-- Header -->
         <div class="header">
-            <div class="company-info">
-                <h1>{{company.name}}</h1>
-                <p>{{company.address}}</p>
-                <p>{{company.phone}}</p>
-                <p>{{company.email}}</p>
+            <div class="invoice-title-section">
+                <h1>INVOICE</h1>
+                <div style="font-size: 16px; font-weight: bold; color: #374151; margin-bottom: 5px;">{{company.name}}</div>
+                <div style="font-size: 12px; color: #6b7280; line-height: 1.4;">
+                    <p style="margin: 2px 0;">{{company.address}}</p>
+                    <p style="margin: 2px 0;">{{company.phone}}</p>
+                    <p style="margin: 2px 0;">{{company.email}}</p>
+                </div>
             </div>
-            <div class="invoice-meta">
-                <h2>INVOICE</h2>
-                <p><strong>Invoice #:</strong> <span class="invoice-number">{{invoice_number}}</span></p>
-                <p><strong>Date:</strong> {{formatDate created_at}}</p>
-                <p><strong>Due Date:</strong> {{formatDate rental_end_date}}</p>
-                <span class="status-badge status-{{status}}">{{status}}</span>
+            
+            <div class="logo-company-section">
+                {{#if templateConfig.logoData}}
+                <img src="{{templateConfig.logoData}}" alt="Company Logo" style="max-height: 100px; max-width: 150px; object-fit: contain; margin-bottom: 10px;">
+                {{else}}
+                <div style="width: 150px; height: 80px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; color: #999; font-size: 11px; text-align: center; margin-bottom: 10px;">
+                    Logo Space<br><small>Add in settings</small>
+                </div>
+                {{/if}}
+                <div class="invoice-details">
+                    <p><strong>Invoice #:</strong> {{invoice_number}}</p>
+                    <p><strong>Date:</strong> {{formatDate created_at}}</p>
+                </div>
             </div>
         </div>
 
-        <!-- Billing Information -->
-        <div class="billing-section">
+        <!-- Header Information Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 5px;">
+            <!-- Bill To -->
             <div class="billing-info">
-                <h3>Bill To:</h3>
-                <p><strong>{{customer_name}}</strong></p>
-                {{#if customer_phone}}
-                <p>{{customer_phone}}</p>
-                {{/if}}
-                {{#if customer_email}}
-                <p>{{customer_email}}</p>
-                {{/if}}
-                {{#if customer_address}}
-                <p>{{customer_address}}</p>
+                <h3 style="color: #374151; margin-bottom: 10px; font-size: 14px; font-weight: bold;">Bill To</h3>
+                <div style="font-size: 13px; color: #374151; line-height: 1.4;">
+                    <p><strong>{{customer_name}}</strong></p>
+                    {{#if customer_phone}}
+                    <p>{{customer_phone}}</p>
+                    {{/if}}
+                    {{#if customer_email}}
+                    <p>{{customer_email}}</p>
+                    {{/if}}
+                    {{#if customer_address}}
+                    <p>{{customer_address}}</p>
+                    {{/if}}
+                </div>
+            </div>
+            
+            <!-- Payment Terms -->
+            <div class="billing-info">
+                <h3 style="color: #374151; margin-bottom: 2px; font-size: 14px; font-weight: bold;">Payment Terms</h3>
+                {{#if templateConfig.paymentTerms}}
+                <p style="font-size: 13px; color: #374151; margin-bottom: 8px; margin-top: 0px; font-weight: normal; -webkit-print-color-adjust: exact;">{{templateConfig.paymentTerms}}</p>
+                {{else}}
+                <p style="font-size: 13px; color: #666; margin-bottom: 8px; font-style: italic;">No payment terms specified</p>
                 {{/if}}
             </div>
-            <div class="billing-info">
-                <h3>Rental Period:</h3>
-                <p><strong>Start:</strong> {{formatDate rental_start_date}}</p>
-                <p><strong>End:</strong> {{formatDate rental_end_date}}</p>
-                <p><strong>Duration:</strong> 
-                    {{#each items}}
-                        {{#if @first}}{{rental_days}} day(s){{/if}}
-                    {{/each}}
-                </p>
+            
+            <!-- Rental Period (right aligned) -->
+            <div class="billing-info" style="text-align: right;">
+                <h3 style="color: #374151; margin-bottom: 2px; font-size: 14px; font-weight: bold;">Rental Period</h3>
+                <div style="font-size: 13px; color: #374151; line-height: 1.4;">
+                    <p><strong>Start:</strong> {{formatDate rental_start_date}}</p>
+                    <p><strong>Duration:</strong> 
+                        {{#each items}}
+                            {{#if @first}}{{rental_days}} day(s){{/if}}
+                        {{/each}}
+                    </p>
+                </div>
             </div>
         </div>
 
@@ -237,7 +318,7 @@
         <table class="items-table">
             <thead>
                 <tr>
-                    <th>Equipment</th>
+                    <th class="text-left">Equipment</th>
                     <th class="text-center">Qty</th>
                     <th class="text-center">Days</th>
                     <th class="text-right">Daily Rate</th>
@@ -250,7 +331,7 @@
                     <td>
                         <strong>{{equipment_name}}</strong>
                         {{#if equipment_description}}
-                        <br><small style="color: #6b7280;">{{equipment_description}}</small>
+                        <br><small style="color: #6b7280; font-size: 10px;">{{equipment_description}}</small>
                         {{/if}}
                     </td>
                     <td class="text-center">{{quantity}}</td>
@@ -282,31 +363,40 @@
             </table>
         </div>
 
-        <!-- Notes -->
-        {{#if notes}}
-        <div class="notes-section">
-            <h3>Notes:</h3>
-            <p>{{notes}}</p>
+        <!-- Banking Details -->
+        {{#if (or templateConfig.bankName templateConfig.accountName templateConfig.accountNumber templateConfig.routingNumber templateConfig.iban templateConfig.swiftCode)}}
+        <div style="margin-top: 20px; font-size: 11px; color: #374151; line-height: 1.4;">
+            {{#if templateConfig.bankName}}
+            <div>{{templateConfig.bankName}}</div>
+            {{/if}}
+            {{#if templateConfig.accountName}}
+            <div>Account: {{templateConfig.accountName}}</div>
+            {{/if}}
+            {{#if templateConfig.accountNumber}}
+            <div>Account Number: {{templateConfig.accountNumber}}</div>
+            {{/if}}
+            {{#if templateConfig.routingNumber}}
+            <div>Branch Code: {{templateConfig.routingNumber}}</div>
+            {{/if}}
+            {{#if templateConfig.iban}}
+            <div>IBAN: {{templateConfig.iban}}</div>
+            {{/if}}
+            {{#if templateConfig.swiftCode}}
+            <div>SWIFT: {{templateConfig.swiftCode}}</div>
+            {{/if}}
         </div>
         {{/if}}
 
         <!-- Terms -->
-        <div class="notes-section">
-            <h3>Terms & Conditions:</h3>
-            <ul style="margin-left: 20px; margin-top: 10px;">
-                <li>Equipment must be returned by the specified return date</li>
-                <li>Late returns subject to additional daily charges</li>
-                <li>Renter is responsible for any damage or loss</li>
-                <li>Payment due within 30 days of invoice date</li>
-                <li>Setup and breakdown services available for additional fee</li>
-            </ul>
+        {{#if templateConfig.termsAndConditions}}
+        <div class="terms-section">
+            <div>
+                <p style="white-space: pre-wrap;">{{templateConfig.termsAndConditions}}</p>
+            </div>
         </div>
+        {{/if}}
 
-        <!-- Footer -->
-        <div class="footer">
-            <p>Thank you for your business!</p>
-            <p>Generated on {{formatDate generatedDate}} | Invoice Generator v1.0</p>
-        </div>
+
     </div>
 </body>
 </html>

@@ -33,6 +33,21 @@ const upload = multer({
   }
 });
 
+// Configure multer for logo uploads (store in memory for base64 conversion)
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: config.upload.maxFileSize,
+  },
+  fileFilter: (req, file, cb) => {
+    if (config.upload.allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, and WebP images are allowed.'));
+    }
+  }
+});
+
 // Upload and process screenshot
 router.post('/screenshot', upload.single('screenshot'), async (req, res) => {
   try {
@@ -73,7 +88,6 @@ router.post('/screenshot', upload.single('screenshot'), async (req, res) => {
           customer_name: "Demo Customer",
           phone_number: "+1 (555) 123-4567",
           rental_start_date: new Date().toISOString().split('T')[0],
-          rental_end_date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           equipment: [
             {
               equipment_id: 1,
@@ -215,6 +229,48 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting upload:', error);
     res.status(500).json({ error: 'Failed to delete upload' });
+  }
+});
+
+// Upload and process logo
+router.post('/logo', logoUpload.single('logo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const { buffer, originalname, mimetype, size } = req.file;
+
+    // Process and optimize the logo with Sharp
+    const processedBuffer = await sharp(buffer)
+      .resize(300, 150, { 
+        fit: 'inside', 
+        withoutEnlargement: true,
+        background: { r: 255, g: 255, b: 255, alpha: 0 }
+      })
+      .png({ quality: 90 })
+      .toBuffer();
+
+    // Convert to base64
+    const base64Data = processedBuffer.toString('base64');
+    const dataUrl = `data:image/png;base64,${base64Data}`;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        logoData: dataUrl,
+        originalName: originalname,
+        size: processedBuffer.length,
+        dimensions: {
+          maxWidth: 300,
+          maxHeight: 150
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error processing logo:', error);
+    res.status(500).json({ error: 'Failed to process logo' });
   }
 });
 

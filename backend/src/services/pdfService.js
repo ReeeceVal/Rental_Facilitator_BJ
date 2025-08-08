@@ -9,6 +9,11 @@ handlebars.registerHelper('formatCurrency', formatCurrency);
 handlebars.registerHelper('formatDate', formatDate);
 handlebars.registerHelper('multiply', (a, b) => a * b);
 handlebars.registerHelper('eq', (a, b) => a === b);
+handlebars.registerHelper('or', (...args) => {
+  // Remove the last argument (Handlebars options object)
+  const values = args.slice(0, -1);
+  return values.some(val => val);
+});
 
 class PDFService {
   constructor() {
@@ -28,7 +33,7 @@ class PDFService {
     return template;
   }
 
-  async generateInvoicePDF(invoiceData, templateConfig = null) {
+  async generateInvoiceHTML(invoiceData, templateConfig = null) {
     try {
       // Get the template
       const template = await this.getTemplate('invoice');
@@ -50,13 +55,24 @@ class PDFService {
       const templateData = {
         ...invoiceData,
         company: companyInfo,
+        templateConfig: templateConfig || { headerColor: '#2563eb' },
         formatCurrency,
         formatDate,
         generatedDate: new Date().toISOString()
       };
 
-      // Generate HTML
-      const html = template(templateData);
+      // Generate and return HTML
+      return template(templateData);
+    } catch (error) {
+      console.error('Error generating HTML:', error);
+      throw new Error('Failed to generate HTML');
+    }
+  }
+
+  async generateInvoicePDF(invoiceData, templateConfig = null) {
+    try {
+      // Generate HTML using the shared method
+      const html = await this.generateInvoiceHTML(invoiceData, templateConfig);
 
       // Launch Puppeteer
       const browser = await puppeteer.launch({
@@ -82,10 +98,10 @@ class PDFService {
         format: 'A4',
         printBackground: true,
         margin: {
-          top: '20mm',
-          right: '15mm',
-          bottom: '20mm',
-          left: '15mm'
+          top: '0mm',
+          right: '0mm',
+          bottom: '0mm',
+          left: '0mm'
         }
       });
 

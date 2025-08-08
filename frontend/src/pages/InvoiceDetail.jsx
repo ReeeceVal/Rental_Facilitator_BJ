@@ -169,14 +169,9 @@ export default function InvoiceDetail() {
                 </div>
                 <div className="flex items-center space-x-2">
                   <Calendar className="h-4 w-4 text-gray-400" />
-                  <span>End: {formatDate(invoice.rental_end_date)}</span>
+                  <span>Duration: {invoice.rental_duration_days || 1} {(invoice.rental_duration_days || 1) === 1 ? 'day' : 'days'}</span>
                 </div>
               </div>
-              {invoice.notes && (
-                <div className="mt-4">
-                  <p className="text-sm text-gray-600">{invoice.notes}</p>
-                </div>
-              )}
             </div>
           </div>
 
@@ -210,6 +205,18 @@ export default function InvoiceDetail() {
               </div>
             </div>
           </div>
+
+          {/* Notes Section */}
+          {invoice.notes && (
+            <div className="card">
+              <div className="card-body">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Notes</h3>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{invoice.notes}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Sidebar */}

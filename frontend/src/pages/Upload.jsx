@@ -202,15 +202,16 @@ export default function Upload() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Duration (Days)</label>
                   {isEditing ? (
                     <Input
-                      type="date"
-                      value={editableData?.rental_end_date || ''}
-                      onChange={(e) => setEditableData(prev => ({...prev, rental_end_date: e.target.value}))}
+                      type="number"
+                      min="1"
+                      value={editableData?.rental_duration_days || 1}
+                      onChange={(e) => setEditableData(prev => ({...prev, rental_duration_days: parseInt(e.target.value) || 1}))}
                     />
                   ) : (
-                    <p className="mt-1 text-sm text-gray-900">{editableData?.rental_end_date || extractedData.rental_end_date}</p>
+                    <p className="mt-1 text-sm text-gray-900">{editableData?.rental_duration_days || extractedData.rental_duration_days || 1} {((editableData?.rental_duration_days || extractedData.rental_duration_days || 1) === 1 ? 'day' : 'days')}</p>
                   )}
                 </div>
               </div>

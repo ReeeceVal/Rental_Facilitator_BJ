@@ -1,4 +1,38 @@
 - ID verification upload 
-- Rental contract integration  (Digital contract that uses nfc scanning from rentee and/or customer devices...)
-- NFC tag rental integration 
+- Rental contract integration  (Digital contract that uses nfc/qr code scanning from rentee and/or customer devices...)(With condition field for each item)
 - Community equipment upload 
+- Stripe Payment integration (---->autopayment of employees & equipment owners ---- Manual Capture)
+- Damage deposits 
+- Employee bank details registration 
+
+
+
+
+****Auto assignment of suppliers.   [Customer only chats with chatbot and the application selects supplier for them]*****     ****concept***
+
+
+-Insurance application ability 
+
+-KPIs to prove the model
+- Rental Organizer/negotiation Chatbot (train/give context with regards to all our past rental conversations)
+- Automated web scrapper for events/ wedding etc...
+
+
+
+-People & Equipment used as resources to fulfill rentals based on availability 
+
+
+
+Rental Process Flow 
+
+Customer browses equipment --> Customer chats with chatbot ---> chatbot negotiates pricing and recomends equipment --> Chatbot sends quote --> Customer accepts quote --> App broadcasts rental to employee list --> Employee accepts rental --> Chatbot issues invoice to customer (with stripe payment link) --> Customer makes payment (to confirm rental) --> [Rental day comes] --> Digital contract(Qr code/NFC tag scanning from both employee & customer) --> Employee does the rental --> Digital contract(scanning...) --> Customer & Employee issue a review of eachother --> Invoice payment gets paid out to employees & equipment owners in respective proportions 
+                                                                                                                                                                                                                 --> Employee rejects rental --> chatbot goes back to negotiation with customer
+
+
+
+
+
+
+
+
+

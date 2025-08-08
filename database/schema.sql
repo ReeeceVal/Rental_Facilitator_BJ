@@ -38,12 +38,13 @@ CREATE TABLE invoices (
     invoice_number VARCHAR(50) UNIQUE NOT NULL,
     customer_id INTEGER REFERENCES customers(id),
     rental_start_date DATE NOT NULL,
-    rental_end_date DATE NOT NULL,
+    rental_duration_days INTEGER DEFAULT 1 CHECK (rental_duration_days >= 1),
     subtotal DECIMAL(10,2) NOT NULL,
     tax_amount DECIMAL(10,2) DEFAULT 0,
     total_amount DECIMAL(10,2) NOT NULL,
     status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'paid', 'cancelled')),
     notes TEXT,
+    template_id INTEGER REFERENCES invoice_templates(id),
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -88,5 +89,6 @@ CREATE INDEX idx_equipment_category ON equipment(category_id);
 CREATE INDEX idx_equipment_active ON equipment(is_active);
 CREATE INDEX idx_invoices_customer ON invoices(customer_id);
 CREATE INDEX idx_invoices_status ON invoices(status);
+CREATE INDEX idx_invoices_duration ON invoices(rental_duration_days);
 CREATE INDEX idx_invoice_items_invoice ON invoice_items(invoice_id);
 CREATE INDEX idx_screenshot_uploads_invoice ON screenshot_uploads(invoice_id);

@@ -61,15 +61,22 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
         rental_start_date: extractedData.rental_start_date || '',
         rental_duration_days: extractedData.rental_duration_days || 1,
         notes: extractedData.notes || '',
-        items: extractedData.equipment?.map(item => ({
-          equipment_id: null,
-          equipment_name: item.equipment_name,
-          description: '',
-          quantity: item.quantity || 1,
-          daily_rate: 0,
-          days: 1,
-          total: 0
-        })) || [
+        items: extractedData.equipment?.map(item => {
+          const quantity = item.quantity || 1
+          const dailyRate = item.daily_rate || 0
+          const days = 1
+          const total = quantity * dailyRate * days
+          
+          return {
+            equipment_id: item.equipment_id || null,
+            equipment_name: item.equipment_name,
+            description: item.description || '',
+            quantity: quantity,
+            daily_rate: dailyRate,
+            days: days,
+            total: total
+          }
+        }) || [
           {
             equipment_id: null,
             equipment_name: '',
@@ -119,22 +126,21 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
     { value: 30, label: '1 Month' }
   ]
 
-  // Calculate end date from start date and duration
-  const calculateEndDate = (startDate, durationDays) => {
-    if (!startDate || !durationDays) return ''
-    const start = new Date(startDate)
-    const end = new Date(start)
-    end.setDate(start.getDate() + durationDays - 1) // -1 because rental includes start day
-    return end.toISOString().split('T')[0]
-  }
 
-  // Set default template when templates are loaded
+  // Set template when templates are loaded
   useEffect(() => {
     if (templates.length > 0 && !selectedTemplate) {
-      const defaultTemplate = templates.find(t => t.is_default) || templates[0]
-      setSelectedTemplate(defaultTemplate)
+      if (isEditing && initialData?.template_id) {
+        // When editing, use the invoice's stored template
+        const invoiceTemplate = templates.find(t => t.id === initialData.template_id)
+        setSelectedTemplate(invoiceTemplate || templates.find(t => t.is_default) || templates[0])
+      } else {
+        // When creating, use default template
+        const defaultTemplate = templates.find(t => t.is_default) || templates[0]
+        setSelectedTemplate(defaultTemplate)
+      }
     }
-  }, [templates, selectedTemplate])
+  }, [templates, selectedTemplate, isEditing, initialData])
 
   // Update form data when initialData changes (for editing)
   useEffect(() => {
@@ -153,18 +159,6 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
   const taxAmount = subtotal * (selectedTemplate?.template_data?.taxRate || 0.08)
   const total = subtotal + taxAmount
 
-  // Update item total when quantity, rate, or days change
-  const updateItemTotal = (index) => {
-    const item = formData.items[index]
-    const newTotal = (item.quantity || 0) * (item.daily_rate || 0) * (item.days || 1)
-    
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.map((item, i) => 
-        i === index ? { ...item, total: newTotal } : item
-      )
-    }))
-  }
 
   const handleItemChange = (index, field, value) => {
     setFormData(prev => ({
@@ -176,6 +170,10 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
   }
 
   const handleEquipmentSelect = (index, selectedEquipment) => {
+    const dailyRate = parseFloat(selectedEquipment.daily_rate) || 0
+    const currentItem = formData.items[index]
+    const newTotal = (currentItem.quantity || 1) * dailyRate * (currentItem.days || 1)
+    
     setFormData(prev => ({
       ...prev,
       items: prev.items.map((item, i) => 
@@ -183,8 +181,9 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
           ...item, 
           equipment_id: selectedEquipment.id,
           equipment_name: selectedEquipment.name,
-          daily_rate: parseFloat(selectedEquipment.daily_rate) || 0,
-          description: selectedEquipment.description || ''
+          daily_rate: dailyRate,
+          description: selectedEquipment.description || '',
+          total: newTotal
         } : item
       )
     }))
@@ -194,8 +193,6 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
       delete newTerms[index]
       return newTerms
     })
-    // Update total
-    setTimeout(() => updateItemTotal(index), 0)
   }
 
   const addItem = () => {
@@ -235,12 +232,18 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
         // Update existing invoice
         const updateData = {
           customer_id: initialData.customer_id,
+          customer_data: {
+            name: formData.customer_name,
+            phone: formData.customer_phone,
+            email: formData.customer_email,
+            address: formData.customer_address
+          },
           rental_start_date: formData.rental_start_date,
-          rental_end_date: calculateEndDate(formData.rental_start_date, formData.rental_duration_days),
           rental_duration_days: formData.rental_duration_days,
           notes: formData.notes,
           tax_amount: taxAmount,
           status: initialData.status || 'draft',
+          template_id: selectedTemplate?.id,
           items: formData.items.filter(item => item.equipment_name).map((item) => ({
             equipment_id: item.equipment_id,
             equipment_name: item.equipment_name,
@@ -262,11 +265,11 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
             address: formData.customer_address
           },
           rental_start_date: formData.rental_start_date,
-          rental_end_date: calculateEndDate(formData.rental_start_date, formData.rental_duration_days),
           rental_duration_days: formData.rental_duration_days,
           notes: formData.notes,
           tax_amount: taxAmount,
           template_config: selectedTemplate.template_data,
+          template_id: selectedTemplate?.id,
           items: formData.items.filter(item => item.equipment_name).map((item) => ({
             equipment_name: item.equipment_name,
             description: item.description,
@@ -290,7 +293,9 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
     ...selectedTemplate.template_data,
     invoice_number: `${selectedTemplate.template_data.invoiceNumberPrefix || 'INV-'}001`,
     date: new Date().toISOString(),
-    due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    rental_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    rental_start_date: formData.rental_start_date || new Date().toISOString(),
+    rental_duration_days: formData.rental_duration_days || 1,
     customer: {
       name: formData.customer_name || 'Customer Name',
       address: formData.customer_address || 'Customer Address',
@@ -307,12 +312,13 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
       total: item.total
     })),
     subtotal,
-    discount: 0,
-    total
+    tax_amount: taxAmount,
+    total,
+    notes: formData.notes || ''
   } : null
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className={`${showPreview ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto space-y-6 px-4`}>
       {/* Header */}
       <div className="sm:flex sm:items-center sm:justify-between">
         <div>
@@ -335,7 +341,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
 
       <div className="flex space-x-6">
         {/* Form Section */}
-        <div className={`${showPreview ? 'w-1/2' : 'w-full'} transition-all duration-300`}>
+        <div className={`${showPreview ? 'w-2/5' : 'w-full'} transition-all duration-300`}>
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Template Selection */}
             <div className="card">
@@ -468,14 +474,6 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                   </div>
                 </div>
                 
-                {/* Show calculated end date */}
-                {formData.rental_start_date && formData.rental_duration_days && (
-                  <div className="mt-3 p-3 bg-gray-50 rounded-md">
-                    <p className="text-sm text-gray-700">
-                      <strong>Calculated End Date:</strong> {formatDate(calculateEndDate(formData.rental_start_date, formData.rental_duration_days))}
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -516,7 +514,6 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                           </label>
                           <div className="relative">
                             <div className="relative">
-                              <Search className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none h-4 w-4 text-gray-400" style={{top: '50%', transform: 'translateY(-50%)', left: '12px'}} />
                               <Input
                                 value={equipmentSearchTerms[index] !== undefined ? equipmentSearchTerms[index] : item.equipment_name}
                                 onChange={(e) => setEquipmentSearchTerms(prev => ({ ...prev, [index]: e.target.value }))}
@@ -526,7 +523,6 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                                   }
                                 }}
                                 placeholder="Search for equipment..."
-                                className="pl-10"
                                 required={!item.equipment_id}
                               />
                             </div>
@@ -722,12 +718,12 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
 
         {/* Preview Section */}
         {showPreview && (
-          <div className="w-1/2">
+          <div className="w-3/5">
             <div className="sticky top-0">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Live Preview</h3>
-              <div className="max-h-[80vh] overflow-y-auto">
+              <div className="max-h-[80vh] overflow-y-auto border border-gray-200 rounded-lg bg-white">
                 {previewData ? (
-                  <InvoicePreview templateData={previewData} className="scale-75 origin-top" />
+                  <InvoicePreview templateData={previewData} className="" />
                 ) : (
                   <div className="text-center py-8 text-gray-500">
                     Select a template to see preview

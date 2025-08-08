@@ -125,11 +125,10 @@ Required fields:
 - phone_number: string (phone number if found)
 - rental_start_date: string (start date in YYYY-MM-DD format if found)
 - rental_duration_days: number (rental duration in days, e.g., 1, 2, 7, etc.)
-- notes: string (any additional notes or special instructions)
+- notes: string (any additional notes or special instructions)  
 - equipment: array of objects with fields:
   - equipment_name: string (EXACT name/description of equipment as written)
   - quantity: number (quantity, default to 1 if not specified)
-  - daily_rate: number (daily rental rate/price if shown in document, null if not found)
 
 IMPORTANT for duration extraction:
 - Look for phrases like "1 day", "2 days", "3 day rental", "week", "weekend"
@@ -142,9 +141,7 @@ IMPORTANT for equipment extraction:
 - Do NOT modify or standardize the names
 - Include ALL equipment items mentioned
 - If quantity is mentioned (like "2x", "3 units", etc.), extract it accurately
-- Look for pricing information: rates, prices, costs per day/item (extract as daily_rate)
-- If pricing is shown per item or per day, extract the numeric value
-- If no pricing is visible for an item, set daily_rate to null
+- IGNORE all pricing information - do not extract prices, rates, or costs
 
 Guidelines:
 - If a field is not found, set it to null or empty string
@@ -155,6 +152,7 @@ Guidelines:
 - If multiple phone numbers, use the first one found
 - Look carefully at tables, lists, and any structured data in the image
 - Default rental_duration_days to 1 if uncertain
+- Focus only on equipment names and quantities - pricing will be automatically handled
 
 Return only valid JSON, no explanations.`;
 
@@ -202,10 +200,8 @@ Return only valid JSON, no explanations.`;
           const matchedEquipment = findClosestEquipment(item.equipment_name, allEquipment);
           
           if (matchedEquipment) {
-            // Use price from image if available, otherwise use database price
-            const finalDailyRate = (item.daily_rate && item.daily_rate > 0) 
-              ? parseFloat(item.daily_rate) 
-              : parseFloat(matchedEquipment.daily_rate);
+            // Always use database price for matched equipment
+            const finalDailyRate = parseFloat(matchedEquipment.daily_rate);
             
             return {
               equipment_id: matchedEquipment.id,
@@ -214,26 +210,19 @@ Return only valid JSON, no explanations.`;
               daily_rate: finalDailyRate,
               quantity: item.quantity || 1,
               extracted_name: item.equipment_name, // Keep original for reference
-              extracted_price: item.daily_rate || null, // Keep original price for reference
-              price_source: (item.daily_rate && item.daily_rate > 0) ? 'image' : 'database',
+              price_source: 'database', // Always use database pricing for matched equipment
               match_confidence: 'matched'
             };
           } else {
-            // No match found - return as unmatched for manual review
-            // Use extracted price if available, otherwise default to 0
-            const finalDailyRate = (item.daily_rate && item.daily_rate > 0) 
-              ? parseFloat(item.daily_rate) 
-              : 0;
-            
+            // No match found - return as unmatched for manual review with no pricing
             return {
               equipment_id: null,
               equipment_name: item.equipment_name,
               description: '',
-              daily_rate: finalDailyRate,
+              daily_rate: 0, // Default to 0 for unmatched equipment
               quantity: item.quantity || 1,
               extracted_name: item.equipment_name,
-              extracted_price: item.daily_rate || null,
-              price_source: (item.daily_rate && item.daily_rate > 0) ? 'image' : 'default',
+              price_source: 'default',
               match_confidence: 'no_match'
             };
           }
@@ -310,7 +299,6 @@ router.post('/scan-free', upload.single('image'), async (req, res) => {
       customer_name: extractField(text, /(?:customer|client|name)[:\s]+([^\n\r]+)/i),
       phone_number: extractField(text, /(?:phone|tel|mobile)[:\s]*([0-9\-\(\)\s\.]{10,})/i),
       rental_start_date: extractDateField(text, /(?:start|from|begin)[:\s]*([0-9\/\-\.]{8,})/i),
-      rental_end_date: extractDateField(text, /(?:end|to|until|return)[:\s]*([0-9\/\-\.]{8,})/i),
       notes: '',
       equipment: extractEquipmentItems(text)
     };

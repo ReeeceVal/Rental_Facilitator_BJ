@@ -45,7 +45,7 @@ export function useMockUploadScreenshot() {
           customer_name: "John Smith",
           phone_number: "+1 (555) 123-4567", 
           rental_start_date: "2024-08-15",
-          rental_end_date: "2024-08-17",
+          rental_duration_days: 2,
           equipment: [
             {
               equipment_id: 1,

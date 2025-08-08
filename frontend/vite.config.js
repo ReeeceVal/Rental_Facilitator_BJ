@@ -11,7 +11,13 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    host: '0.0.0.0',      // Expose to network
+    port: 5173,           // Default dev port
+    strictPort: true,     // Avoid random fallback ports
+    origin: 'https://96720467dfd3.ngrok-free.app',  // 👈 Replace this with your current ngrok URL
+    hmr: {
+      clientPort: 443     // Required for HTTPS HMR with ngrok
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

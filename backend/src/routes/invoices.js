@@ -3,6 +3,10 @@ const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { generateInvoiceNumber } = require('../utils/helpers');
 const pdfService = require('../services/pdfService');
+const handlebars = require('handlebars');
+const fs = require('fs').promises;
+const path = require('path');
+const { formatCurrency, formatDate } = require('../utils/helpers');
 const router = express.Router();
 
 const calculateCommissions = async (invoiceId, totalAmount, client = pool) => {
@@ -57,7 +61,7 @@ const calculateCommissions = async (invoiceId, totalAmount, client = pool) => {
 const invoiceValidation = [
   body('customer_id').isInt({ min: 1 }).withMessage('Valid customer ID is required'),
   body('rental_start_date').isISO8601().withMessage('Valid start date is required'),
-  body('rental_end_date').isISO8601().withMessage('Valid end date is required'),
+  body('rental_duration_days').isInt({ min: 1 }).withMessage('Rental duration must be at least 1 day'),
   body('items').isArray({ min: 1 }).withMessage('At least one item is required'),
   body('items.*.equipment_id').isInt({ min: 1 }).withMessage('Valid equipment ID is required'),
   body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
@@ -106,7 +110,7 @@ router.get('/', async (req, res) => {
 
     if (end_date) {
       paramCount++;
-      query += ` AND i.rental_end_date <= $${paramCount}`;
+      query += ` AND i.rental_start_date + INTERVAL '1 day' * i.rental_duration_days <= $${paramCount}`;
       queryParams.push(end_date);
     }
 
@@ -153,7 +157,7 @@ router.get('/', async (req, res) => {
 
     if (end_date) {
       countParamCount++;
-      countQuery += ` AND i.rental_end_date <= $${countParamCount}`;
+      countQuery += ` AND i.rental_start_date + INTERVAL '1 day' * i.rental_duration_days <= $${countParamCount}`;
       countParams.push(end_date);
     }
 
@@ -185,7 +189,7 @@ router.get('/calendar', async (req, res) => {
         i.id,
         i.invoice_number,
         i.rental_start_date,
-        i.rental_end_date,
+        i.rental_duration_days,
         i.total_amount,
         i.status,
         c.name as customer_name,
@@ -222,7 +226,7 @@ router.get('/calendar', async (req, res) => {
     }
     
     query += `
-      GROUP BY i.id, i.invoice_number, i.rental_start_date, i.rental_end_date, 
+      GROUP BY i.id, i.invoice_number, i.rental_start_date, i.rental_duration_days, 
                i.total_amount, i.status, c.name
       ORDER BY i.rental_start_date ASC
     `;
@@ -230,17 +234,24 @@ router.get('/calendar', async (req, res) => {
     const result = await pool.query(query, queryParams);
     
     // Transform data into calendar events
-    const events = result.rows.map(row => ({
-      id: row.id,
-      title: `${row.customer_name} - ${row.invoice_number}`,
-      start: row.rental_start_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
-      end: row.rental_end_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
-      totalAmount: parseFloat(row.total_amount),
-      status: row.status,
-      customer: row.customer_name,
-      equipment: row.equipment || [],
-      invoiceNumber: row.invoice_number
-    }));
+    const events = result.rows.map(row => {
+      const startDate = new Date(row.rental_start_date);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + (row.rental_duration_days || 1) - 1);
+      
+      return {
+        id: row.id,
+        title: `${row.customer_name} - ${row.invoice_number}`,
+        start: row.rental_start_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
+        end: endDate.toISOString().split('T')[0], // Calculate end date from duration
+        totalAmount: parseFloat(row.total_amount),
+        status: row.status,
+        customer: row.customer_name,
+        equipment: row.equipment || [],
+        invoiceNumber: row.invoice_number,
+        duration: row.rental_duration_days || 1
+      };
+    });
     
     res.json({
       success: true,
@@ -309,11 +320,11 @@ router.post('/', invoiceValidation, async (req, res) => {
     const {
       customer_id,
       rental_start_date,
-      rental_end_date,
       rental_duration_days = 1,
       items,
       notes,
-      tax_amount = 0
+      tax_amount = 0,
+      template_id
     } = req.body;
 
     // Calculate totals
@@ -326,12 +337,12 @@ router.post('/', invoiceValidation, async (req, res) => {
 
     // Create invoice
     const invoiceResult = await client.query(`
-      INSERT INTO invoices (invoice_number, customer_id, rental_start_date, rental_end_date, 
-                           rental_duration_days, subtotal, tax_amount, total_amount, notes)
+      INSERT INTO invoices (invoice_number, customer_id, rental_start_date, 
+                           rental_duration_days, subtotal, tax_amount, total_amount, notes, template_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
-    `, [invoice_number, customer_id, rental_start_date, rental_end_date, rental_duration_days,
-        subtotal, tax_amount, total_amount, notes]);
+    `, [invoice_number, customer_id, rental_start_date, rental_duration_days,
+        subtotal, tax_amount, total_amount, notes, template_id]);
 
     const invoice = invoiceResult.rows[0];
 
@@ -380,12 +391,14 @@ router.put('/:id', invoiceValidation, async (req, res) => {
     const { id } = req.params;
     const {
       customer_id,
+      customer_data,
       rental_start_date,
-      rental_end_date,
+      rental_duration_days,
       items,
       notes,
       tax_amount = 0,
-      status
+      status,
+      template_id
     } = req.body;
 
     // Calculate totals
@@ -395,16 +408,31 @@ router.put('/:id', invoiceValidation, async (req, res) => {
     
     const total_amount = subtotal + parseFloat(tax_amount);
 
+    // Update customer information if provided
+    if (customer_data && customer_id) {
+      await client.query(`
+        UPDATE customers 
+        SET name = $1, phone = $2, email = $3, address = $4, updated_at = NOW()
+        WHERE id = $5
+      `, [
+        customer_data.name || '',
+        customer_data.phone || '',
+        customer_data.email || '',
+        customer_data.address || '',
+        customer_id
+      ]);
+    }
+
     // Update invoice
     const invoiceResult = await client.query(`
       UPDATE invoices 
-      SET customer_id = $1, rental_start_date = $2, rental_end_date = $3, 
+      SET customer_id = $1, rental_start_date = $2, rental_duration_days = $3, 
           subtotal = $4, tax_amount = $5, total_amount = $6, notes = $7, 
-          status = $8, updated_at = NOW()
-      WHERE id = $9
+          status = $8, template_id = $9, updated_at = NOW()
+      WHERE id = $10
       RETURNING *
-    `, [customer_id, rental_start_date, rental_end_date, subtotal, tax_amount, 
-        total_amount, notes, status, id]);
+    `, [customer_id, rental_start_date, rental_duration_days, subtotal, tax_amount, 
+        total_amount, notes, status, template_id, id]);
 
     if (invoiceResult.rows.length === 0) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -463,7 +491,29 @@ router.get('/:id/pdf', async (req, res) => {
     const invoice = invoiceResult.rows[0];
     invoice.items = itemsResult.rows;
 
-    const pdfBuffer = await pdfService.generateInvoicePDF(invoice);
+    // Get template configuration (use invoice's template or fall back to default)
+    let templateResult;
+    if (invoice.template_id) {
+      templateResult = await pool.query(`
+        SELECT template_data FROM invoice_templates 
+        WHERE id = $1
+      `, [invoice.template_id]);
+    }
+    
+    // Fall back to default template if no specific template found
+    if (!templateResult || templateResult.rows.length === 0) {
+      templateResult = await pool.query(`
+        SELECT template_data FROM invoice_templates 
+        WHERE is_default = true 
+        LIMIT 1
+      `);
+    }
+    
+    const template_config = templateResult.rows.length > 0 
+      ? templateResult.rows[0].template_data 
+      : { headerColor: '#2563eb' };
+
+    const pdfBuffer = await pdfService.generateInvoicePDF(invoice, template_config);
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoice.invoice_number}.pdf"`);
@@ -471,6 +521,184 @@ router.get('/:id/pdf', async (req, res) => {
   } catch (error) {
     console.error('Error generating PDF:', error);
     res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
+// Render invoice HTML (for preview)
+router.get('/:id/html', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get complete invoice data
+    const invoiceResult = await pool.query(`
+      SELECT i.*, c.name as customer_name, c.phone as customer_phone, 
+             c.email as customer_email, c.address as customer_address
+      FROM invoices i
+      LEFT JOIN customers c ON i.customer_id = c.id
+      WHERE i.id = $1
+    `, [id]);
+
+    if (invoiceResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const itemsResult = await pool.query(`
+      SELECT ii.*, e.name as equipment_name, e.description as equipment_description
+      FROM invoice_items ii
+      LEFT JOIN equipment e ON ii.equipment_id = e.id
+      WHERE ii.invoice_id = $1
+      ORDER BY ii.id
+    `, [id]);
+
+    const invoice = invoiceResult.rows[0];
+    invoice.items = itemsResult.rows;
+
+    // Get template configuration (use invoice's template or fall back to default)
+    let templateResult;
+    if (invoice.template_id) {
+      templateResult = await pool.query(`
+        SELECT template_data FROM invoice_templates 
+        WHERE id = $1
+      `, [invoice.template_id]);
+    }
+    
+    // Fall back to default template if no specific template found
+    if (!templateResult || templateResult.rows.length === 0) {
+      templateResult = await pool.query(`
+        SELECT template_data FROM invoice_templates 
+        WHERE is_default = true 
+        LIMIT 1
+      `);
+    }
+    
+    const template_config = templateResult.rows.length > 0 
+      ? templateResult.rows[0].template_data 
+      : { headerColor: '#2563eb' };
+
+    // Use the same template rendering logic as PDF service
+    const templatePath = path.join(__dirname, '../templates', 'invoice.hbs');
+    const templateSource = await fs.readFile(templatePath, 'utf8');
+    const template = handlebars.compile(templateSource);
+    
+    // Register helpers (same as PDF service)
+    handlebars.registerHelper('formatCurrency', formatCurrency);
+    handlebars.registerHelper('formatDate', formatDate);
+    handlebars.registerHelper('multiply', (a, b) => a * b);
+    handlebars.registerHelper('eq', (a, b) => a === b);
+    handlebars.registerHelper('or', (...args) => {
+      const values = args.slice(0, -1);
+      return values.some(val => val);
+    });
+
+    // Prepare data for template (same as PDF service)
+    const companyInfo = template_config ? {
+      name: template_config.companyName || 'Sound Rental Pro',
+      address: template_config.companyAddress || '123 Music Street\nAudio City, AC 12345',
+      phone: template_config.companyPhone || '(555) 123-4567',
+      email: template_config.companyEmail || 'info@soundrentalpro.com'
+    } : {
+      name: 'Sound Rental Pro',
+      address: '123 Music Street\nAudio City, AC 12345',
+      phone: '(555) 123-4567',
+      email: 'info@soundrentalpro.com'
+    };
+    
+    const templateData = {
+      ...invoice,
+      company: companyInfo,
+      templateConfig: template_config || { headerColor: '#2563eb' },
+      formatCurrency,
+      formatDate,
+      generatedDate: new Date().toISOString()
+    };
+
+    // Generate HTML
+    const html = template(templateData);
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error) {
+    console.error('Error rendering invoice HTML:', error);
+    res.status(500).json({ error: 'Failed to render invoice HTML' });
+  }
+});
+
+// Preview template with sample data
+router.post('/preview-template', async (req, res) => {
+  try {
+    const { templateData, invoiceData } = req.body;
+    
+    // Use actual invoice data if provided, otherwise use sample data
+    let sampleData;
+    
+    if (invoiceData && invoiceData.customer && invoiceData.items && invoiceData.items.length > 0) {
+      // Use actual form data
+      sampleData = {
+        invoice_number: invoiceData.invoice_number || (templateData?.invoiceNumberPrefix ? `${templateData.invoiceNumberPrefix}001` : 'INV-001'),
+        created_at: invoiceData.date || new Date().toISOString(),
+        customer_name: invoiceData.customer.name || 'Customer Name',
+        customer_phone: invoiceData.customer.phone || '',
+        customer_email: invoiceData.customer.email || '',
+        customer_address: invoiceData.customer.address || '',
+        rental_start_date: invoiceData.rental_start_date || new Date().toISOString(),
+        rental_duration_days: invoiceData.rental_duration_days || 1,
+        items: invoiceData.items.map(item => ({
+          equipment_name: item.name || item.equipment_name,
+          equipment_description: item.description || '',
+          quantity: item.quantity || 1,
+          rental_days: item.days || item.rental_days || 1,
+          daily_rate: item.daily_rate || 0,
+          line_total: item.total || item.line_total || 0
+        })),
+        subtotal: invoiceData.subtotal || 0,
+        tax_amount: invoiceData.tax_amount || (templateData?.taxRate ? (invoiceData.subtotal * templateData.taxRate) : 0),
+        total_amount: invoiceData.total || 0,
+        notes: invoiceData.notes || ''
+      };
+    } else {
+      // Use sample data as fallback
+      sampleData = {
+        invoice_number: templateData?.invoiceNumberPrefix ? `${templateData.invoiceNumberPrefix}001` : 'INV-001',
+        created_at: new Date().toISOString(),
+        customer_name: 'Sample Customer',
+        customer_phone: '(555) 987-6543',
+        customer_email: 'customer@example.com',
+        customer_address: '456 Customer Ave\nSample City, SC 54321',
+        rental_start_date: new Date().toISOString(),
+        rental_duration_days: 1,
+        items: [
+          {
+            equipment_name: 'Professional Microphone',
+            equipment_description: 'Wireless handheld microphone with receiver',
+            quantity: 2,
+            rental_days: 1,
+            daily_rate: 25.00,
+            line_total: 50.00
+          },
+          {
+            equipment_name: 'Speaker System',
+            equipment_description: 'Full range PA speakers with stands',
+            quantity: 1,
+            rental_days: 1,
+            daily_rate: 75.00,
+            line_total: 75.00
+          }
+        ],
+        subtotal: 125.00,
+        tax_amount: templateData?.taxRate ? (125.00 * templateData.taxRate) : 10.00,
+        total_amount: 135.00,
+        notes: 'Sample invoice for template preview'
+      };
+    }
+
+    // Use PDFService to generate HTML (eliminates code duplication)
+    const html = await pdfService.generateInvoiceHTML(sampleData, templateData);
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error) {
+    console.error('Error previewing template:', error);
+    res.status(500).json({ error: 'Failed to preview template' });
   }
 });
 
@@ -484,12 +712,12 @@ router.post('/create-and-generate-pdf', async (req, res) => {
     const {
       customer_data,
       rental_start_date,
-      rental_end_date,
       rental_duration_days = 1,
       items,
       notes,
       tax_amount = 0,
-      template_config
+      template_config,
+      template_id
     } = req.body;
 
     // Create or find customer
@@ -521,12 +749,12 @@ router.post('/create-and-generate-pdf', async (req, res) => {
 
     // Create invoice
     const invoiceResult = await client.query(`
-      INSERT INTO invoices (invoice_number, customer_id, rental_start_date, rental_end_date, 
-                           rental_duration_days, subtotal, tax_amount, total_amount, notes)
+      INSERT INTO invoices (invoice_number, customer_id, rental_start_date, 
+                           rental_duration_days, subtotal, tax_amount, total_amount, notes, template_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
-    `, [invoice_number, customer_id, rental_start_date, rental_end_date, rental_duration_days,
-        subtotal, tax_amount, total_amount, notes]);
+    `, [invoice_number, customer_id, rental_start_date, rental_duration_days,
+        subtotal, tax_amount, total_amount, notes, template_id]);
 
     const invoice = invoiceResult.rows[0];
 

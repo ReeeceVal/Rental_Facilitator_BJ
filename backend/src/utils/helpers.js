@@ -12,13 +12,13 @@ function calculateRentalDays(startDate, endDate) {
   return Math.max(1, diffDays); // Minimum 1 day rental
 }
 
-function formatCurrency(amount, currency = 'USD') {
+function formatCurrency(amount, currency = 'ZAR') {
   // Handle Handlebars context - if currency is an object, use default
   if (typeof currency === 'object') {
-    currency = 'USD';
+    currency = 'ZAR';
   }
   
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-ZA', {
     style: 'currency',
     currency: currency,
   }).format(amount);

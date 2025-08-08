@@ -12,6 +12,15 @@ const templateValidation = [
   body('template_data.taxRate').isFloat({ min: 0, max: 1 }).withMessage('Tax rate must be between 0 and 1'),
   body('template_data.currency').notEmpty().withMessage('Currency is required'),
   body('template_data.invoiceNumberPrefix').notEmpty().withMessage('Invoice number prefix is required'),
+  // Logo field is optional
+  body('template_data.logoData').optional().isString().withMessage('Logo data must be a string'),
+  // Banking fields are optional
+  body('template_data.bankName').optional().isString().withMessage('Bank name must be a string'),
+  body('template_data.accountName').optional().isString().withMessage('Account name must be a string'),
+  body('template_data.accountNumber').optional().isString().withMessage('Account number must be a string'),
+  body('template_data.routingNumber').optional().isString().withMessage('Routing number must be a string'),
+  body('template_data.iban').optional().isString().withMessage('IBAN must be a string'),
+  body('template_data.swiftCode').optional().isString().withMessage('SWIFT code must be a string'),
 ];
 
 // Get all templates

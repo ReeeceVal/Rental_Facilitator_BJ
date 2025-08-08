@@ -90,7 +90,6 @@ export default function InvoiceList() {
           data: {
             customer_id: invoiceData.customer_id,
             rental_start_date: invoiceData.rental_start_date,
-            rental_end_date: invoiceData.rental_end_date,
             items: invoiceData.items || [],
             notes: invoiceData.notes || '',
             tax_amount: invoiceData.tax_amount || 0,

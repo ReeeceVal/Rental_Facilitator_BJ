@@ -251,14 +251,21 @@ router.post('/logo', logoUpload.single('logo'), async (req, res) => {
       .png({ quality: 90 })
       .toBuffer();
 
-    // Convert to base64
-    const base64Data = processedBuffer.toString('base64');
-    const dataUrl = `data:image/png;base64,${base64Data}`;
+    // Generate unique filename
+    const timestamp = Date.now();
+    const sanitizedName = sanitizeFilename(originalname);
+    const fileName = `logo-${timestamp}-${sanitizedName.replace(/\.[^/.]+$/, '')}.png`;
+    const filePath = path.join(__dirname, '../../uploads/logos', fileName);
+    const logoUrl = `/uploads/logos/${fileName}`;
+
+    // Save processed image to disk
+    const fs = require('fs').promises;
+    await fs.writeFile(filePath, processedBuffer);
 
     res.status(200).json({
       success: true,
       data: {
-        logoData: dataUrl,
+        logoUrl: logoUrl,
         originalName: originalname,
         size: processedBuffer.length,
         dimensions: {

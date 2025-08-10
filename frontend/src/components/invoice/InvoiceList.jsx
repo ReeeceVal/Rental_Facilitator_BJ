@@ -17,7 +17,8 @@ import Button from '../ui/Button'
 import Input from '../ui/Input'
 import { formatCurrency, formatDate, debounce } from '../../utils/helpers'
 import { 
-  INVOICE_STATUS_LABELS
+  INVOICE_STATUS_LABELS,
+  INVOICE_STATUS_COLORS
 } from '../../utils/constants'
 
 export default function InvoiceList() {
@@ -66,7 +67,21 @@ export default function InvoiceList() {
   }
 
   const handleTogglePaymentStatus = async (invoice) => {
-    const newStatus = invoice.status === 'paid' ? 'draft' : 'paid'
+    // Cycle through: unpaid -> paid -> cancelled -> unpaid
+    let newStatus
+    switch (invoice.status) {
+      case 'unpaid':
+        newStatus = 'paid'
+        break
+      case 'paid':
+        newStatus = 'cancelled'
+        break
+      case 'cancelled':
+        newStatus = 'unpaid'
+        break
+      default:
+        newStatus = 'unpaid' // fallback for any unknown status
+    }
     
     try {
       const response = await fetch(`/api/invoices/${invoice.id}`)
@@ -85,16 +100,29 @@ export default function InvoiceList() {
       }
       
       if (invoiceData && invoiceData.customer_id) {
+        // Ensure all required fields are present for validation
+        const updateData = {
+          customer_id: invoiceData.customer_id,
+          rental_start_date: invoiceData.rental_start_date,
+          rental_duration_days: invoiceData.rental_duration_days || 1,
+          transport_amount: invoiceData.transport_amount || 0,
+          transport_discount: invoiceData.transport_discount || 0,
+          service_fee: invoiceData.service_fee || 0,
+          service_discount: invoiceData.service_discount || 0,
+          items: (invoiceData.items || []).map(item => ({
+            equipment_id: item.equipment_id,
+            quantity: item.quantity || 1,
+            rate: item.rate || 0,
+            rental_days: item.rental_days || invoiceData.rental_duration_days || 1
+          })),
+          notes: invoiceData.notes || '',
+          tax_amount: invoiceData.tax_amount || 0,
+          status: newStatus
+        }
+
         await updateInvoice.mutateAsync({
           id: invoice.id,
-          data: {
-            customer_id: invoiceData.customer_id,
-            rental_start_date: invoiceData.rental_start_date,
-            items: invoiceData.items || [],
-            notes: invoiceData.notes || '',
-            tax_amount: invoiceData.tax_amount || 0,
-            status: newStatus
-          }
+          data: updateData
         })
       }
     } catch (error) {
@@ -181,94 +209,63 @@ export default function InvoiceList() {
       {/* Invoice List */}
       {invoices.length > 0 ? (
         <>
-          <div className="bg-white shadow overflow-hidden sm:rounded-md">
+          <div className="bg-white shadow-sm overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
               {invoices.map((invoice) => (
                 <li key={invoice.id}>
-                  <div className="px-4 py-4 sm:px-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <div className="flex-shrink-0">
-                          <FileText className="h-8 w-8 text-primary-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center space-x-3">
-                            <p className="text-lg font-medium text-gray-900">
+                  <div className="p-3 sm:p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      {/* Left side: Main info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-3">
+                          {/* Top line on mobile: Invoice # and Amount */}
+                          <div className="w-full flex items-center justify-between">
+                            <p className="text-base font-semibold text-primary-700 truncate sm:text-lg">
                               {invoice.invoice_number}
                             </p>
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm text-gray-600">
-                                {invoice.status === 'paid' ? 'Paid' : 'Unpaid'}
-                              </span>
-                              <button
-                                onClick={() => handleTogglePaymentStatus(invoice)}
-                                disabled={updateInvoice.isLoading}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
-                                  invoice.status === 'paid' 
-                                    ? 'bg-green-600' 
-                                    : 'bg-gray-200'
-                                }`}
-                              >
-                                <span
-                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                    invoice.status === 'paid' ? 'translate-x-6' : 'translate-x-1'
-                                  }`}
-                                />
-                              </button>
-                            </div>
+                            <p className="sm:hidden text-base font-semibold text-gray-900">
+                              {formatCurrency(invoice.total_amount)}
+                            </p>
                           </div>
-                          <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
-                            <span>{invoice.customer_name}</span>
-                            {invoice.customer_phone && (
-                              <span>• {invoice.customer_phone}</span>
-                            )}
-                            <span>• {formatDate(invoice.rental_start_date)} ({invoice.rental_duration_days || 1} {(invoice.rental_duration_days || 1) === 1 ? 'day' : 'days'})</span>
+                          {/* Second line on mobile: Customer & Status */}
+                          <div className="mt-1 sm:mt-0 flex items-center space-x-3">
+                            <p className="text-sm text-gray-600 truncate">
+                              {invoice.customer_name}
+                            </p>
+                            <button
+                              onClick={() => handleTogglePaymentStatus(invoice)}
+                              disabled={updateInvoice.isLoading}
+                              className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 min-w-[60px] justify-center ${INVOICE_STATUS_COLORS[invoice.status] || 'bg-gray-100 text-gray-800'}`}
+                            >
+                              {INVOICE_STATUS_LABELS[invoice.status]}
+                            </button>
                           </div>
                         </div>
+                        <div className="mt-2 sm:mt-1 flex items-center space-x-3 text-xs text-gray-500">
+                          <span>{formatDate(invoice.rental_start_date)} ({invoice.rental_duration_days || 1}d)</span>
+                          <span className="hidden md:inline">•</span>
+                          <span className="hidden md:inline">Created {formatDate(invoice.created_at)}</span>
+                        </div>
                       </div>
-                      
-                      <div className="flex items-center space-x-4">
-                        <div className="text-right">
+
+                      {/* Right side: Amount and Actions */}
+                      <div className="mt-4 sm:mt-0 sm:ml-6 flex items-center justify-between">
+                        <div className="hidden sm:block text-right">
                           <p className="text-lg font-semibold text-gray-900">
                             {formatCurrency(invoice.total_amount)}
                           </p>
-                          <p className="text-sm text-gray-500">
-                            Created {formatDate(invoice.created_at)}
-                          </p>
                         </div>
-                        
-                        <div className="flex space-x-2">
-                          <Link
-                            to={`/invoices/${invoice.id}`}
-                            className="text-gray-400 hover:text-primary-600"
-                            title="View Details"
-                          >
+                        <div className="flex space-x-1 sm:ml-4">
+                          <Link to={`/invoices/${invoice.id}`} className="p-2 text-gray-500 rounded-full hover:bg-gray-100 hover:text-primary-600" title="View">
                             <Eye className="h-4 w-4" />
                           </Link>
-                          
-                          <button
-                            onClick={() => handleDownloadPDF(invoice)}
-                            className="text-gray-400 hover:text-green-600"
-                            title="Download PDF"
-                            disabled={generatePDF.isLoading}
-                          >
+                          <button onClick={() => handleDownloadPDF(invoice)} className="p-2 text-gray-500 rounded-full hover:bg-gray-100 hover:text-green-600" title="Download" disabled={generatePDF.isLoading}>
                             <Download className="h-4 w-4" />
                           </button>
-                          
-                          <Link
-                            to={`/invoices/${invoice.id}/edit`}
-                            className="text-gray-400 hover:text-blue-600"
-                            title="Edit Invoice"
-                          >
+                          <Link to={`/invoices/${invoice.id}/edit`} className="p-2 text-gray-500 rounded-full hover:bg-gray-100 hover:text-blue-600" title="Edit">
                             <Edit className="h-4 w-4" />
                           </Link>
-                          
-                          <button
-                            onClick={() => handleDelete(invoice)}
-                            className="text-gray-400 hover:text-red-600"
-                            title="Delete Invoice"
-                            disabled={deleteInvoice.isLoading}
-                          >
+                          <button onClick={() => handleDelete(invoice)} className="p-2 text-gray-500 rounded-full hover:bg-red-100 hover:text-red-600" title="Delete" disabled={deleteInvoice.isLoading}>
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>

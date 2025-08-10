@@ -226,10 +226,6 @@
             color: #374151;
         }
         
-        .status-sent {
-            background-color: #dbeafe;
-            color: #1d4ed8;
-        }
         
         .status-paid {
             background-color: #d1fae5;
@@ -257,13 +253,14 @@
             </div>
             
             <div class="logo-company-section">
-                {{#if templateConfig.logoData}}
-                <img src="{{templateConfig.logoData}}" alt="Company Logo" style="max-height: 100px; max-width: 150px; object-fit: contain; margin-bottom: 10px;">
-                {{else}}
-                <div style="width: 150px; height: 80px; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; color: #999; font-size: 11px; text-align: center; margin-bottom: 10px;">
-                    Logo Space<br><small>Add in settings</small>
+                <div style="min-height: 120px; display: flex; flex-direction: column; justify-content: flex-end;">
+                    {{#if templateConfig.logoUrl}}
+                    <!-- Debug: logoUrl = {{templateConfig.logoUrl}} -->
+                    <img src="{{templateConfig.logoUrl}}" alt="Company Logo" style="max-height: 100px; max-width: 150px; object-fit: contain; margin-bottom: 10px;" onerror="console.log('Logo failed to load:', this.src); this.style.display='none';">
+                    {{else}}
+                    <!-- Debug: No logoUrl found -->
+                    {{/if}}
                 </div>
-                {{/if}}
                 <div class="invoice-details">
                     <p><strong>Invoice #:</strong> {{invoice_number}}</p>
                     <p><strong>Date:</strong> {{formatDate created_at}}</p>
@@ -321,7 +318,8 @@
                     <th class="text-left">Equipment</th>
                     <th class="text-center">Qty</th>
                     <th class="text-center">Days</th>
-                    <th class="text-right">Daily Rate</th>
+                    <th class="text-center">Rate</th>
+                    <th class="text-center">Item Discount</th>
                     <th class="text-right">Total</th>
                 </tr>
             </thead>
@@ -336,10 +334,47 @@
                     </td>
                     <td class="text-center">{{quantity}}</td>
                     <td class="text-center">{{rental_days}}</td>
-                    <td class="text-right">{{formatCurrency daily_rate}}</td>
+                    <td class="text-center">{{formatCurrency rate}}</td>
+                    <td class="text-center">
+                        {{#if (gt item_discount_amount 0)}}
+                            ({{formatCurrency item_discount_amount}})
+                        {{/if}}
+                    </td>
                     <td class="text-right">{{formatCurrency line_total}}</td>
                 </tr>
                 {{/each}}
+                {{#if (gt service_fee 0)}}
+                <tr>
+                    <td style="padding-left: 30px;">
+                        <strong>Service Fee</strong>
+                    </td>
+                    <td class="text-center"></td>
+                    <td class="text-center"></td>
+                    <td class="text-center">{{formatCurrency service_fee}}</td>
+                    <td class="text-center">
+                        {{#if (gt service_discount 0)}}
+                            ({{formatCurrency service_discount}})
+                        {{/if}}
+                    </td>
+                    <td class="text-right">{{formatCurrency (subtract service_fee service_discount)}}</td>
+                </tr>
+                {{/if}}
+                {{#if (gt transport_amount 0)}}
+                <tr>
+                    <td style="padding-left: 30px;">
+                        <strong>Transport</strong>
+                    </td>
+                    <td class="text-center"></td>
+                    <td class="text-center"></td>
+                    <td class="text-center">{{formatCurrency transport_amount}}</td>
+                    <td class="text-center">
+                        {{#if (gt transport_discount 0)}}
+                            ({{formatCurrency transport_discount}})
+                        {{/if}}
+                    </td>
+                    <td class="text-right">{{formatCurrency (subtract transport_amount transport_discount)}}</td>
+                </tr>
+                {{/if}}
             </tbody>
         </table>
 
@@ -347,17 +382,17 @@
         <div class="totals-section">
             <table class="totals-table">
                 <tr>
-                    <td>Subtotal:</td>
-                    <td class="text-right">{{formatCurrency subtotal}}</td>
+                    <td>Subtotal (Excl. VAT):</td>
+                    <td class="text-right">{{formatCurrency (invoiceSubtotal subtotal transport_amount transport_discount service_fee service_discount)}}</td>
                 </tr>
                 {{#if tax_amount}}
                 <tr>
-                    <td>Tax:</td>
+                    <td>VAT @ 15%:</td>
                     <td class="text-right">{{formatCurrency tax_amount}}</td>
                 </tr>
                 {{/if}}
                 <tr class="total-row">
-                    <td>Total:</td>
+                    <td>Total Due:</td>
                     <td class="text-right">{{formatCurrency total_amount}}</td>
                 </tr>
             </table>

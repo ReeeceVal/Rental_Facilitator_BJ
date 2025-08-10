@@ -62,11 +62,16 @@ const invoiceValidation = [
   body('customer_id').isInt({ min: 1 }).withMessage('Valid customer ID is required'),
   body('rental_start_date').isISO8601().withMessage('Valid start date is required'),
   body('rental_duration_days').isInt({ min: 1 }).withMessage('Rental duration must be at least 1 day'),
+  body('transport_amount').optional().isFloat({ min: 0 }).withMessage('Transport amount must be positive'),
+  body('transport_discount').optional().isFloat({ min: 0 }).withMessage('Transport discount must be positive'),
+  body('service_fee').optional().isFloat({ min: 0 }).withMessage('Service fee must be positive'),
+  body('service_discount').optional().isFloat({ min: 0 }).withMessage('Service discount must be positive'),
   body('items').isArray({ min: 1 }).withMessage('At least one item is required'),
   body('items.*.equipment_id').isInt({ min: 1 }).withMessage('Valid equipment ID is required'),
   body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-  body('items.*.daily_rate').isFloat({ min: 0 }).withMessage('Daily rate must be positive'),
+  body('items.*.rate').isFloat({ min: 0 }).withMessage('Rate must be positive'),
   body('items.*.rental_days').isInt({ min: 1 }).withMessage('Rental days must be at least 1'),
+  body('items.*.item_discount_amount').optional().isFloat({ min: 0 }).withMessage('Item discount must be positive'),
 ];
 
 // Get all invoices with optional filtering
@@ -128,6 +133,14 @@ router.get('/', async (req, res) => {
 
     const result = await pool.query(query, queryParams);
 
+    // Map database column names to frontend expected names for backward compatibility
+    const invoices = result.rows.map(invoice => ({
+      ...invoice,
+      total_amount: invoice.total_due,
+      subtotal: invoice.equipment_subtotal,
+      tax_amount: invoice.vat_amount
+    }));
+
     // Get total count
     let countQuery = `
       SELECT COUNT(*) as total 
@@ -165,7 +178,7 @@ router.get('/', async (req, res) => {
     const total = parseInt(countResult.rows[0].total);
 
     res.json({
-      invoices: result.rows,
+      invoices: invoices,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -348,12 +361,12 @@ router.post('/', invoiceValidation, async (req, res) => {
 
     // Create invoice items
     for (const item of items) {
-      const line_total = item.daily_rate * item.quantity * item.rental_days;
+      const line_total = item.rate * item.quantity * item.rental_days;
       
       await client.query(`
-        INSERT INTO invoice_items (invoice_id, equipment_id, quantity, daily_rate, rental_days, line_total)
+        INSERT INTO invoice_items (invoice_id, equipment_id, quantity, rate, rental_days, line_total)
         VALUES ($1, $2, $3, $4, $5, $6)
-      `, [invoice.id, item.equipment_id, item.quantity, item.daily_rate, item.rental_days, line_total]);
+      `, [invoice.id, item.equipment_id, item.quantity, item.rate, item.rental_days, line_total]);
     }
 
     await client.query('COMMIT');
@@ -394,6 +407,10 @@ router.put('/:id', invoiceValidation, async (req, res) => {
       customer_data,
       rental_start_date,
       rental_duration_days,
+      transport_amount = 0,
+      transport_discount = 0,
+      service_fee = 0,
+      service_discount = 0,
       items,
       notes,
       tax_amount = 0,
@@ -401,12 +418,21 @@ router.put('/:id', invoiceValidation, async (req, res) => {
       template_id
     } = req.body;
 
-    // Calculate totals
-    const subtotal = items.reduce((sum, item) => {
-      return sum + (item.daily_rate * item.quantity * item.rental_days);
+    // Calculate equipment subtotal (including item discounts)
+    const equipment_subtotal = items.reduce((sum, item) => {
+      const item_discount = parseFloat(item.item_discount_amount) || 0;
+      const line_total = (item.rate * item.quantity * item.rental_days) - item_discount;
+      return sum + line_total;
     }, 0);
     
-    const total_amount = subtotal + parseFloat(tax_amount);
+    // Calculate full invoice subtotal (equipment + transport + service fees - discounts)
+    const invoice_subtotal = equipment_subtotal + parseFloat(transport_amount) - parseFloat(transport_discount) + parseFloat(service_fee) - parseFloat(service_discount);
+    
+    // Calculate VAT on the full invoice subtotal
+    const vat_amount = invoice_subtotal * 0.15; // 15% VAT
+    
+    // Calculate total due (subtotal + VAT)
+    const total_amount = invoice_subtotal + vat_amount;
 
     // Update customer information if provided
     if (customer_data && customer_id) {
@@ -427,12 +453,13 @@ router.put('/:id', invoiceValidation, async (req, res) => {
     const invoiceResult = await client.query(`
       UPDATE invoices 
       SET customer_id = $1, rental_start_date = $2, rental_duration_days = $3, 
-          subtotal = $4, tax_amount = $5, total_amount = $6, notes = $7, 
-          status = $8, template_id = $9, updated_at = NOW()
-      WHERE id = $10
+          equipment_subtotal = $4, vat_amount = $5, transport_amount = $6, transport_discount = $7,
+          service_fee = $8, service_discount = $9, total_due = $10, notes = $11, 
+          status = $12, template_id = $13, updated_at = NOW()
+      WHERE id = $14
       RETURNING *
-    `, [customer_id, rental_start_date, rental_duration_days, subtotal, tax_amount, 
-        total_amount, notes, status, template_id, id]);
+    `, [customer_id, rental_start_date, rental_duration_days, equipment_subtotal, vat_amount, 
+        transport_amount, transport_discount, service_fee, service_discount, total_amount, notes, status, template_id, id]);
 
     if (invoiceResult.rows.length === 0) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -443,12 +470,13 @@ router.put('/:id', invoiceValidation, async (req, res) => {
 
     // Create new invoice items
     for (const item of items) {
-      const line_total = item.daily_rate * item.quantity * item.rental_days;
+      const item_discount = parseFloat(item.item_discount_amount) || 0;
+      const line_total = (item.rate * item.quantity * item.rental_days) - item_discount;
       
       await client.query(`
-        INSERT INTO invoice_items (invoice_id, equipment_id, quantity, daily_rate, rental_days, line_total)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [id, item.equipment_id, item.quantity, item.daily_rate, item.rental_days, line_total]);
+        INSERT INTO invoice_items (invoice_id, equipment_id, quantity, rate, rental_days, item_discount_amount, line_total)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [id, item.equipment_id, item.quantity, item.rate, item.rental_days, item_discount, line_total]);
     }
 
     await client.query('COMMIT');
@@ -490,6 +518,20 @@ router.get('/:id/pdf', async (req, res) => {
 
     const invoice = invoiceResult.rows[0];
     invoice.items = itemsResult.rows;
+    
+    // Ensure numeric fields are properly converted for PDF generation
+    invoice.equipment_subtotal = parseFloat(invoice.equipment_subtotal) || 0;
+    invoice.vat_amount = parseFloat(invoice.vat_amount) || 0;
+    invoice.transport_amount = parseFloat(invoice.transport_amount) || 0;
+    invoice.transport_discount = parseFloat(invoice.transport_discount) || 0;
+    invoice.service_fee = parseFloat(invoice.service_fee) || 0;
+    invoice.service_discount = parseFloat(invoice.service_discount) || 0;
+    invoice.total_due = parseFloat(invoice.total_due) || 0;
+    
+    // For backward compatibility with template, map to old names
+    invoice.subtotal = invoice.equipment_subtotal;
+    invoice.tax_amount = invoice.vat_amount;
+    invoice.total_amount = invoice.total_due;
 
     // Get template configuration (use invoice's template or fall back to default)
     let templateResult;
@@ -552,6 +594,20 @@ router.get('/:id/html', async (req, res) => {
 
     const invoice = invoiceResult.rows[0];
     invoice.items = itemsResult.rows;
+    
+    // Ensure numeric fields are properly converted for HTML preview
+    invoice.equipment_subtotal = parseFloat(invoice.equipment_subtotal) || 0;
+    invoice.vat_amount = parseFloat(invoice.vat_amount) || 0;
+    invoice.transport_amount = parseFloat(invoice.transport_amount) || 0;
+    invoice.transport_discount = parseFloat(invoice.transport_discount) || 0;
+    invoice.service_fee = parseFloat(invoice.service_fee) || 0;
+    invoice.service_discount = parseFloat(invoice.service_discount) || 0;
+    invoice.total_due = parseFloat(invoice.total_due) || 0;
+    
+    // For backward compatibility with template, map to old names
+    invoice.subtotal = invoice.equipment_subtotal;
+    invoice.tax_amount = invoice.vat_amount;
+    invoice.total_amount = invoice.total_due;
 
     // Get template configuration (use invoice's template or fall back to default)
     let templateResult;
@@ -584,6 +640,9 @@ router.get('/:id/html', async (req, res) => {
     handlebars.registerHelper('formatCurrency', formatCurrency);
     handlebars.registerHelper('formatDate', formatDate);
     handlebars.registerHelper('multiply', (a, b) => a * b);
+    handlebars.registerHelper('subtract', (a, b) => a - b);
+    handlebars.registerHelper('add', (a, b) => a + b);
+    handlebars.registerHelper('gt', (a, b) => a > b);
     handlebars.registerHelper('eq', (a, b) => a === b);
     handlebars.registerHelper('or', (...args) => {
       const values = args.slice(0, -1);
@@ -647,9 +706,18 @@ router.post('/preview-template', async (req, res) => {
           equipment_description: item.description || '',
           quantity: item.quantity || 1,
           rental_days: item.days || item.rental_days || 1,
-          daily_rate: item.daily_rate || 0,
+          rate: item.rate || 0,
+          item_discount_amount: item.item_discount_amount || 0,
           line_total: item.total || item.line_total || 0
         })),
+        equipment_subtotal: invoiceData.subtotal || 0,
+        vat_amount: invoiceData.tax_amount || (templateData?.taxRate ? (invoiceData.subtotal * templateData.taxRate) : 0),
+        transport_amount: invoiceData.transport_amount || 0,
+        transport_discount: invoiceData.transport_discount || 0,
+        service_fee: invoiceData.service_fee || 0,
+        service_discount: invoiceData.service_discount || 0,
+        total_due: invoiceData.total || 0,
+        // For backward compatibility
         subtotal: invoiceData.subtotal || 0,
         tax_amount: invoiceData.tax_amount || (templateData?.taxRate ? (invoiceData.subtotal * templateData.taxRate) : 0),
         total_amount: invoiceData.total || 0,
@@ -672,7 +740,8 @@ router.post('/preview-template', async (req, res) => {
             equipment_description: 'Wireless handheld microphone with receiver',
             quantity: 2,
             rental_days: 1,
-            daily_rate: 25.00,
+            rate: 25.00,
+            item_discount_amount: 0,
             line_total: 50.00
           },
           {
@@ -680,13 +749,19 @@ router.post('/preview-template', async (req, res) => {
             equipment_description: 'Full range PA speakers with stands',
             quantity: 1,
             rental_days: 1,
-            daily_rate: 75.00,
+            rate: 75.00,
+            item_discount_amount: 0,
             line_total: 75.00
           }
         ],
+        equipment_subtotal: 125.00,
+        vat_amount: templateData?.taxRate ? (125.00 * templateData.taxRate) : 10.00,
+        transport_amount: 15.00, // Sample transport amount
+        total_due: 150.00,       // Updated total: 125 + 10 + 15 = 150
+        // For backward compatibility
         subtotal: 125.00,
         tax_amount: templateData?.taxRate ? (125.00 * templateData.taxRate) : 10.00,
-        total_amount: 135.00,
+        total_amount: 150.00,
         notes: 'Sample invoice for template preview'
       };
     }
@@ -713,6 +788,10 @@ router.post('/create-and-generate-pdf', async (req, res) => {
       customer_data,
       rental_start_date,
       rental_duration_days = 1,
+      transport_amount = 0,
+      transport_discount = 0,
+      service_fee = 0,
+      service_discount = 0,
       items,
       notes,
       tax_amount = 0,
@@ -739,28 +818,39 @@ router.post('/create-and-generate-pdf', async (req, res) => {
       customer_id = req.body.customer_id || 1;
     }
 
-    // Calculate totals
-    const subtotal = items.reduce((sum, item) => {
-      return sum + (item.daily_rate * item.quantity * item.rental_days);
+    // Calculate equipment subtotal (including item discounts)
+    const equipment_subtotal = items.reduce((sum, item) => {
+      const item_discount = parseFloat(item.item_discount_amount) || 0;
+      const line_total = (item.rate * item.quantity * item.rental_days) - item_discount;
+      return sum + line_total;
     }, 0);
     
-    const total_amount = subtotal + parseFloat(tax_amount);
+    // Calculate full invoice subtotal (equipment + transport + service fees - discounts)
+    const invoice_subtotal = equipment_subtotal + parseFloat(transport_amount) - parseFloat(transport_discount) + parseFloat(service_fee) - parseFloat(service_discount);
+    
+    // Calculate VAT on the full invoice subtotal
+    const vat_amount = invoice_subtotal * 0.15; // 15% VAT
+    
+    // Calculate total due (subtotal + VAT)
+    const total_amount = invoice_subtotal + vat_amount;
     const invoice_number = generateInvoiceNumber();
 
     // Create invoice
     const invoiceResult = await client.query(`
       INSERT INTO invoices (invoice_number, customer_id, rental_start_date, 
-                           rental_duration_days, subtotal, tax_amount, total_amount, notes, template_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                           rental_duration_days, equipment_subtotal, vat_amount, transport_amount, 
+                           transport_discount, service_fee, service_discount, total_due, notes, template_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `, [invoice_number, customer_id, rental_start_date, rental_duration_days,
-        subtotal, tax_amount, total_amount, notes, template_id]);
+        equipment_subtotal, vat_amount, transport_amount, transport_discount, service_fee, service_discount, total_amount, notes, template_id]);
 
     const invoice = invoiceResult.rows[0];
 
     // Create invoice items (and equipment if needed)
     for (const item of items) {
-      const line_total = item.daily_rate * item.quantity * item.rental_days;
+      const item_discount = parseFloat(item.item_discount_amount) || 0;
+      const line_total = (item.rate * item.quantity * item.rental_days) - item_discount;
       
       let equipment_id = item.equipment_id;
       
@@ -785,7 +875,7 @@ router.post('/create-and-generate-pdf', async (req, res) => {
           `, [
             item.equipment_name.trim(),
             item.description || '',
-            item.daily_rate,
+            item.rate,
             item.quantity || 1
           ]);
           equipment_id = equipmentResult.rows[0].id;
@@ -793,9 +883,9 @@ router.post('/create-and-generate-pdf', async (req, res) => {
       }
       
       await client.query(`
-        INSERT INTO invoice_items (invoice_id, equipment_id, quantity, daily_rate, rental_days, line_total)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [invoice.id, equipment_id, item.quantity, item.daily_rate, item.rental_days, line_total]);
+        INSERT INTO invoice_items (invoice_id, equipment_id, quantity, rate, rental_days, item_discount_amount, line_total)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [invoice.id, equipment_id, item.quantity, item.rate, item.rental_days, item_discount, line_total]);
     }
 
     await client.query('COMMIT');

@@ -189,9 +189,9 @@ export default function EquipmentManager() {
 
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-500">Daily Rate:</span>
+                      <span className="text-sm text-gray-500">Rate:</span>
                       <span className="text-sm font-medium text-gray-900">
-                        {formatCurrency(item.daily_rate)}
+                        {formatCurrency(item.rate)}
                       </span>
                     </div>
 

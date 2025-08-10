@@ -8,11 +8,17 @@ const { formatCurrency, formatDate } = require('../utils/helpers');
 handlebars.registerHelper('formatCurrency', formatCurrency);
 handlebars.registerHelper('formatDate', formatDate);
 handlebars.registerHelper('multiply', (a, b) => a * b);
+handlebars.registerHelper('add', (a, b) => a + b);
+handlebars.registerHelper('subtract', (a, b) => a - b);
 handlebars.registerHelper('eq', (a, b) => a === b);
+handlebars.registerHelper('gt', (a, b) => a > b);
 handlebars.registerHelper('or', (...args) => {
   // Remove the last argument (Handlebars options object)
   const values = args.slice(0, -1);
   return values.some(val => val);
+});
+handlebars.registerHelper('invoiceSubtotal', (subtotal, transport_amount, transport_discount, service_fee, service_discount) => {
+  return subtotal + transport_amount - transport_discount + service_fee - service_discount;
 });
 
 class PDFService {
@@ -33,7 +39,7 @@ class PDFService {
     return template;
   }
 
-  async generateInvoiceHTML(invoiceData, templateConfig = null) {
+  async generateInvoiceHTML(invoiceData, templateConfig = null, isPDF = false) {
     try {
       // Get the template
       const template = await this.getTemplate('invoice');
@@ -51,15 +57,33 @@ class PDFService {
         email: 'info@soundrentalpro.com'
       };
       
+      // Modify template config for PDF context
+      let finalTemplateConfig = { ...(templateConfig || { headerColor: '#2563eb' }) };
+      if (isPDF && finalTemplateConfig.logoUrl) {
+        // For PDF generation, convert image to base64 to avoid CORS issues
+        try {
+          const logoPath = path.join(__dirname, '../..', finalTemplateConfig.logoUrl);
+          const logoBuffer = await fs.readFile(logoPath);
+          const logoMimeType = finalTemplateConfig.logoUrl.endsWith('.png') ? 'image/png' : 'image/jpeg';
+          finalTemplateConfig.logoUrl = `data:${logoMimeType};base64,${logoBuffer.toString('base64')}`;
+        } catch (error) {
+          console.error('Failed to load logo for PDF:', error);
+          finalTemplateConfig.logoUrl = null; // Remove logo if it can't be loaded
+        }
+      }
+      
       // Prepare data for template
       const templateData = {
         ...invoiceData,
         company: companyInfo,
-        templateConfig: templateConfig || { headerColor: '#2563eb' },
+        templateConfig: finalTemplateConfig,
         formatCurrency,
         formatDate,
         generatedDate: new Date().toISOString()
       };
+
+      // Debug: Log template config to see logo URL
+      console.log('Template config in PDF service:', JSON.stringify(finalTemplateConfig, null, 2));
 
       // Generate and return HTML
       return template(templateData);
@@ -71,8 +95,8 @@ class PDFService {
 
   async generateInvoicePDF(invoiceData, templateConfig = null) {
     try {
-      // Generate HTML using the shared method
-      const html = await this.generateInvoiceHTML(invoiceData, templateConfig);
+      // Generate HTML using the shared method with PDF flag
+      const html = await this.generateInvoiceHTML(invoiceData, templateConfig, true);
 
       // Launch Puppeteer
       const browser = await puppeteer.launch({
@@ -89,6 +113,17 @@ class PDFService {
       });
 
       const page = await browser.newPage();
+      
+      // Enable request interception for debugging
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        console.log('PDF Puppeteer request:', request.url());
+        request.continue();
+      });
+      
+      page.on('requestfailed', (request) => {
+        console.log('PDF Puppeteer request failed:', request.url(), request.failure()?.errorText);
+      });
       
       // Set content and wait for it to load
       await page.setContent(html, { waitUntil: 'networkidle0' });

@@ -2,24 +2,21 @@
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'
 
 export const INVOICE_STATUSES = {
-  DRAFT: 'draft',
-  SENT: 'sent',
+  UNPAID: 'unpaid',
   PAID: 'paid',
   CANCELLED: 'cancelled'
 }
 
 export const INVOICE_STATUS_LABELS = {
-  [INVOICE_STATUSES.DRAFT]: 'Draft',
-  [INVOICE_STATUSES.SENT]: 'Sent',
+  [INVOICE_STATUSES.UNPAID]: 'Unpaid',
   [INVOICE_STATUSES.PAID]: 'Paid',
   [INVOICE_STATUSES.CANCELLED]: 'Cancelled'
 }
 
 export const INVOICE_STATUS_COLORS = {
-  [INVOICE_STATUSES.DRAFT]: 'bg-gray-100 text-gray-800',
-  [INVOICE_STATUSES.SENT]: 'bg-blue-100 text-blue-800',
+  [INVOICE_STATUSES.UNPAID]: 'bg-red-100 text-red-800',
   [INVOICE_STATUSES.PAID]: 'bg-green-100 text-green-800',
-  [INVOICE_STATUSES.CANCELLED]: 'bg-red-100 text-red-800'
+  [INVOICE_STATUSES.CANCELLED]: 'bg-yellow-100 text-yellow-800'
 }
 
 export const PROCESSING_STATUSES = {

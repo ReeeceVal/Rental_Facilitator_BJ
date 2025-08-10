@@ -1,14 +1,15 @@
-import { useCallback, useState } from 'react'
+import React, { useCallback, useState, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, X, Image, AlertCircle } from 'lucide-react'
 import { formatFileSize, isValidImageType } from '../../utils/helpers'
 import { MAX_FILE_SIZE, ALLOWED_IMAGE_TYPES } from '../../utils/constants'
 import Button from '../ui/Button'
 
-export default function LogoUpload({ onLogoChange, currentLogo = null, isUploading = false }) {
+export default function LogoUpload({ onLogoChange, currentLogo = null, isUploading = false, onUploadStateChange }) {
   const [selectedFile, setSelectedFile] = useState(null)
-  const [previewUrl, setPreviewUrl] = useState(currentLogo)
+  const [previewUrl, setPreviewUrl] = useState(currentLogo ? `http://localhost:3001${currentLogo}` : null)
   const [error, setError] = useState(null)
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
 
   const onDrop = useCallback((acceptedFiles, rejectedFiles) => {
     setError(null)
@@ -56,12 +57,15 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
     if (previewUrl && previewUrl !== currentLogo) {
       URL.revokeObjectURL(previewUrl)
     }
-    setPreviewUrl(currentLogo)
+    setPreviewUrl(currentLogo ? `http://localhost:3001${currentLogo}` : null)
     setError(null)
   }
 
   const handleUpload = async () => {
     if (!selectedFile) return
+
+    setIsUploadingLogo(true)
+    onUploadStateChange?.(true)
 
     const formData = new FormData()
     formData.append('logo', selectedFile)
@@ -78,15 +82,19 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
 
       const result = await response.json()
       
-      // Call the parent component with the base64 logo data
-      onLogoChange(result.data.logoData)
+      // Call the parent component with the logo URL
+      onLogoChange(result.data.logoUrl)
       
-      // Update preview to use the processed logo
-      setPreviewUrl(result.data.logoData)
+      // Update preview to use the processed logo URL (prepend backend URL)
+      const fullLogoUrl = `http://localhost:3001${result.data.logoUrl}`
+      setPreviewUrl(fullLogoUrl)
       setSelectedFile(null)
     } catch (error) {
       console.error('Logo upload error:', error)
       setError('Failed to upload logo. Please try again.')
+    } finally {
+      setIsUploadingLogo(false)
+      onUploadStateChange?.(false)
     }
   }
 
@@ -95,6 +103,16 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
     setPreviewUrl(null)
     setSelectedFile(null)
   }
+
+  // Function to check if there are pending uploads
+  const hasPendingUpload = () => {
+    return selectedFile !== null
+  }
+
+  // Expose this function to parent component
+  useEffect(() => {
+    onUploadStateChange?.(hasPendingUpload())
+  }, [selectedFile, onUploadStateChange])
 
   return (
     <div className="space-y-4">
@@ -193,14 +211,21 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
 
           {/* Upload Button */}
           {selectedFile && (
-            <div className="flex justify-center">
-              <Button
-                onClick={handleUpload}
-                loading={isUploading}
-                size="sm"
-              >
-                {isUploading ? 'Uploading Logo...' : 'Upload Logo'}
-              </Button>
+            <div className="space-y-2">
+              <div className="flex justify-center">
+                <Button
+                  onClick={handleUpload}
+                  loading={isUploadingLogo}
+                  size="sm"
+                >
+                  {isUploadingLogo ? 'Uploading Logo...' : 'Upload Logo'}
+                </Button>
+              </div>
+              {selectedFile && !isUploadingLogo && (
+                <p className="text-sm text-amber-600 text-center">
+                  ⚠️ Upload your logo before saving the template
+                </p>
+              )}
             </div>
           )}
 

@@ -16,7 +16,7 @@ export default function EquipmentForm({ equipment, onSuccess }) {
     defaultValues: equipment || {
       name: '',
       description: '',
-      daily_rate: '',
+      rate: '',
       category_id: '',
       stock_quantity: 1,
       is_active: true
@@ -35,7 +35,7 @@ export default function EquipmentForm({ equipment, onSuccess }) {
       const formattedData = {
         name: data.name,
         description: data.description,
-        daily_rate: parseFloat(data.daily_rate),
+        rate: parseFloat(data.rate),
         stock_quantity: parseInt(data.stock_quantity),
         is_active: data.is_active
       }
@@ -116,24 +116,24 @@ export default function EquipmentForm({ equipment, onSuccess }) {
           )}
         </div>
 
-        {/* Daily Rate */}
+        {/* Rate */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Daily Rate * (R)
+            Rate * (R)
           </label>
           <Input
             type="number"
             step="0.01"
             min="0"
-            {...register('daily_rate', { 
-              required: 'Daily rate is required',
+            {...register('rate', { 
+              required: 'Rate is required',
               min: { value: 0, message: 'Rate must be positive' }
             })}
-            error={!!errors.daily_rate}
+            error={!!errors.rate}
             placeholder="50.00"
           />
-          {errors.daily_rate && (
-            <p className="mt-1 text-sm text-red-600">{errors.daily_rate.message}</p>
+          {errors.rate && (
+            <p className="mt-1 text-sm text-red-600">{errors.rate.message}</p>
           )}
         </div>
 

@@ -133,7 +133,7 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
     companyAddress: '',
     companyPhone: '',
     companyEmail: '',
-    logoData: null,
+    logoUrl: null,
     headerColor: '#2563eb',
     backgroundColor: '#FFFFFF',
     termsAndConditions: '',
@@ -151,62 +151,75 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
   
   const [templateName, setTemplateName] = useState('')
   const [showPreview, setShowPreview] = useState(false)
+  const [hasPendingLogoUpload, setHasPendingLogoUpload] = useState(false)
 
   // Update form data when template changes
   useEffect(() => {
+    const defaultData = {
+      companyName: '',
+      companyAddress: '',
+      companyPhone: '',
+      companyEmail: '',
+      logoUrl: null,
+      headerColor: '#2563eb',
+      backgroundColor: '#FFFFFF',
+      termsAndConditions: '',
+      taxRate: 0.08,
+      currency: 'ZAR',
+      invoiceNumberPrefix: 'INV-',
+      paymentTerms: 'Due prior to rental',
+      bankName: '',
+      accountName: '',
+      accountNumber: '',
+      routingNumber: '',
+      iban: '',
+      swiftCode: ''
+    };
+
     if (template) {
-      setFormData(template.template_data || {
-        companyName: '',
-        companyAddress: '',
-        companyPhone: '',
-        companyEmail: '',
-        logoData: null,
-        headerColor: '#2563eb',
-        backgroundColor: '#FFFFFF',
-        termsAndConditions: '',
-        taxRate: 0.08,
-        currency: 'ZAR',
-        invoiceNumberPrefix: 'INV-',
-        paymentTerms: 'Due prior to rental',
-        bankName: '',
-        accountName: '',
-        accountNumber: '',
-        routingNumber: '',
-        iban: '',
-        swiftCode: ''
+      // Merge template data with defaults to ensure all fields exist
+      setFormData({
+        ...defaultData,
+        ...template.template_data
       })
       setTemplateName(template.name || '')
     } else {
       // Reset form for new template
-      setFormData({
-        companyName: '',
-        companyAddress: '',
-        companyPhone: '',
-        companyEmail: '',
-        logoData: null,
-        headerColor: '#2563eb',
-        backgroundColor: '#FFFFFF',
-        termsAndConditions: '',
-        taxRate: 0.08,
-        currency: 'ZAR',
-        invoiceNumberPrefix: 'INV-',
-        paymentTerms: 'Due prior to rental',
-        bankName: '',
-        accountName: '',
-        accountNumber: '',
-        routingNumber: '',
-        iban: '',
-        swiftCode: ''
-      })
+      setFormData(defaultData)
       setTemplateName('')
     }
   }, [template])
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    
+    // Prevent saving if there's a pending logo upload
+    if (hasPendingLogoUpload) {
+      alert('Please upload your logo before saving the template.')
+      return
+    }
+    
+    // Debug: Log the raw form data
+    console.log('Raw form data before cleaning:', formData)
+    console.log('logoUrl specifically:', formData.logoUrl)
+    
+    // Filter out null/undefined values to avoid validation errors, but keep logoUrl even if null
+    const cleanedFormData = Object.fromEntries(
+      Object.entries(formData).filter(([key, value]) => {
+        // Always include logoUrl field, even if null (backend will handle it properly)
+        if (key === 'logoUrl') return true;
+        if (value === null || value === undefined) return false;
+        if (typeof value === 'string' && value.trim() === '') return false;
+        return true;
+      })
+    )
+    
+    // Debug: Log the cleaned form data
+    console.log('Cleaned form data being sent:', cleanedFormData)
+    
     onSave({
       name: templateName,
-      template_data: formData
+      template_data: cleanedFormData
     })
   }
 
@@ -304,14 +317,28 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
               Background Color
             </label>
             <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {[
+                  { hex: '#FFFFFF', name: 'Pure White' },
+                  { hex: '#FAF8F4', name: 'Cream White' },
+                  { hex: '#F6F3E7', name: 'Off White' },
                   { hex: '#E3D7BD', name: 'Warm Beige' },
                   { hex: '#EBE6D9', name: 'Light Cream' },
-                  { hex: '#F6F3E7', name: 'Off White' },
-                  { hex: '#FFFFFF', name: 'Pure White' },
                   { hex: '#F0E2CE', name: 'Soft Cream' },
-                  { hex: '#D3D0C9', name: 'Light Gray' }
+                  { hex: '#EDECE8', name: 'Stone' },
+                  { hex: '#D3D0C9', name: 'Light Gray' },
+                  { hex: '#EDE3DA', name: 'Warm Sand' },
+                  { hex: '#F5E9DC', name: 'Ivory' },
+                  { hex: '#F3E7D3', name: 'Vanilla' },
+                  { hex: '#EAE0D5', name: 'Linen' },
+                  { hex: '#F4E4E1', name: 'Blush' },
+                  { hex: '#F3D8D2', name: 'Rose Cream' },
+                  { hex: '#EBD2CF', name: 'Dusty Rose' },
+                  { hex: '#F9ECEB', name: 'Pearl Blush' },
+                  { hex: '#E3EDF5', name: 'Ice Blue' },
+                  { hex: '#D9E4EC', name: 'Sky Mist' },
+                  { hex: '#D4E3EA', name: 'Powder Blue' },
+                  { hex: '#CBDCE6', name: 'Soft Blue' }
                 ].map((color) => (
                   <button
                     key={color.hex}
@@ -352,8 +379,9 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
 
         <div>
           <LogoUpload
-            onLogoChange={(logoData) => setFormData({...formData, logoData})}
-            currentLogo={formData.logoData}
+            onLogoChange={(logoUrl) => setFormData(prev => ({...prev, logoUrl}))}
+            currentLogo={formData.logoUrl}
+            onUploadStateChange={setHasPendingLogoUpload}
           />
         </div>
 
@@ -476,8 +504,12 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
               <Button type="button" variant="secondary" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit">
-                {template ? 'Update Template' : 'Create Template'}
+              <Button 
+                type="submit"
+                disabled={hasPendingLogoUpload}
+                title={hasPendingLogoUpload ? 'Please upload your logo first' : ''}
+              >
+                {hasPendingLogoUpload ? 'Upload Logo First' : template ? 'Update Template' : 'Create Template'}
               </Button>
             </ModalFooter>
           </form>

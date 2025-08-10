@@ -13,7 +13,7 @@ const templateValidation = [
   body('template_data.currency').notEmpty().withMessage('Currency is required'),
   body('template_data.invoiceNumberPrefix').notEmpty().withMessage('Invoice number prefix is required'),
   // Logo field is optional
-  body('template_data.logoData').optional().isString().withMessage('Logo data must be a string'),
+  body('template_data.logoUrl').optional({ values: 'falsy' }).isString().withMessage('Logo URL must be a string'),
   // Banking fields are optional
   body('template_data.bankName').optional().isString().withMessage('Bank name must be a string'),
   body('template_data.accountName').optional().isString().withMessage('Account name must be a string'),
@@ -130,8 +130,11 @@ router.put('/:id', templateValidation, async (req, res) => {
   try {
     await client.query('BEGIN');
     
+    console.log('Template update request body:', JSON.stringify(req.body, null, 2));
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.error('Template validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 

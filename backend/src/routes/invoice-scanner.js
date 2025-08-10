@@ -37,7 +37,7 @@ function imageBufferToBase64(buffer, mimeType) {
 async function getAllEquipment() {
   try {
     const result = await pool.query(`
-      SELECT id, name, description, daily_rate
+      SELECT id, name, description, rate
       FROM equipment 
       WHERE is_active = true
       ORDER BY name ASC
@@ -201,13 +201,13 @@ Return only valid JSON, no explanations.`;
           
           if (matchedEquipment) {
             // Always use database price for matched equipment
-            const finalDailyRate = parseFloat(matchedEquipment.daily_rate);
+            const finalRate = parseFloat(matchedEquipment.rate);
             
             return {
               equipment_id: matchedEquipment.id,
               equipment_name: matchedEquipment.name,
               description: matchedEquipment.description,
-              daily_rate: finalDailyRate,
+              rate: finalRate,
               quantity: item.quantity || 1,
               extracted_name: item.equipment_name, // Keep original for reference
               price_source: 'database', // Always use database pricing for matched equipment
@@ -219,7 +219,7 @@ Return only valid JSON, no explanations.`;
               equipment_id: null,
               equipment_name: item.equipment_name,
               description: '',
-              daily_rate: 0, // Default to 0 for unmatched equipment
+              rate: 0, // Default to 0 for unmatched equipment
               quantity: item.quantity || 1,
               extracted_name: item.equipment_name,
               price_source: 'default',

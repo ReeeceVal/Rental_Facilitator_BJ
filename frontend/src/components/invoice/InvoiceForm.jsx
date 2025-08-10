@@ -38,14 +38,19 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
         customer_email: initialData.customer_email || '',
         rental_start_date: initialData.rental_start_date ? initialData.rental_start_date.split('T')[0] : '',
         rental_duration_days: initialData.rental_duration_days || 1,
+        transport_amount: parseFloat(initialData.transport_amount) || 0,
+        transport_discount: parseFloat(initialData.transport_discount) || 0,
+        service_fee: parseFloat(initialData.service_fee) || 0,
+        service_discount: parseFloat(initialData.service_discount) || 0,
         notes: initialData.notes || '',
         items: initialData.items?.map(item => ({
           equipment_id: item.equipment_id,
           equipment_name: item.equipment_name,
           description: item.equipment_description || '',
           quantity: item.quantity || 1,
-          daily_rate: parseFloat(item.daily_rate) || 0,
+          rate: parseFloat(item.rate) || 0,
           days: item.rental_days || 1,
+          item_discount_amount: parseFloat(item.item_discount_amount) || 0,
           total: parseFloat(item.line_total) || 0
         })) || []
       }
@@ -60,10 +65,14 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
         customer_email: '',
         rental_start_date: extractedData.rental_start_date || '',
         rental_duration_days: extractedData.rental_duration_days || 1,
+        transport_amount: 0,
+        transport_discount: 0,
+        service_fee: 0,
+        service_discount: 0,
         notes: extractedData.notes || '',
         items: extractedData.equipment?.map(item => {
           const quantity = item.quantity || 1
-          const dailyRate = item.daily_rate || 0
+          const rate = item.rate || 0
           const days = 1
           const total = quantity * dailyRate * days
           
@@ -72,8 +81,9 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
             equipment_name: item.equipment_name,
             description: item.description || '',
             quantity: quantity,
-            daily_rate: dailyRate,
+            rate: rate,
             days: days,
+            item_discount_amount: 0,
             total: total
           }
         }) || [
@@ -82,7 +92,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
             equipment_name: '',
             description: '',
             quantity: 1,
-            daily_rate: 0,
+            rate: 0,
             days: 1,
             total: 0
           }
@@ -98,6 +108,10 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
       customer_email: '',
       rental_start_date: '',
       rental_duration_days: 1,
+      transport_amount: 0,
+      transport_discount: 0,
+      service_fee: 0,
+      service_discount: 0,
       notes: '',
       items: [
         {
@@ -105,8 +119,9 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
           equipment_name: '',
           description: '',
           quantity: 1,
-          daily_rate: 0,
+          rate: 0,
           days: 1,
+          item_discount_amount: 0,
           total: 0
         }
       ]
@@ -155,9 +170,20 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
   }, [isEditing, initialData, getInitialFormData])
 
   // Calculate totals
-  const subtotal = formData.items.reduce((sum, item) => sum + (item.total || 0), 0)
-  const taxAmount = subtotal * (selectedTemplate?.template_data?.taxRate || 0.08)
-  const total = subtotal + taxAmount
+  const equipmentSubtotal = formData.items.reduce((sum, item) => sum + (item.total || 0), 0)
+  const transportAmount = parseFloat(formData.transport_amount) || 0
+  const transportDiscount = parseFloat(formData.transport_discount) || 0
+  const serviceFee = parseFloat(formData.service_fee) || 0
+  const serviceDiscount = parseFloat(formData.service_discount) || 0
+  
+  // Calculate full invoice subtotal (equipment + transport + service fees - discounts)
+  const invoiceSubtotal = equipmentSubtotal + transportAmount - transportDiscount + serviceFee - serviceDiscount
+  
+  // Calculate VAT on the full invoice subtotal
+  const taxAmount = invoiceSubtotal * (selectedTemplate?.template_data?.taxRate || 0.15)
+  
+  // Calculate total due (subtotal + VAT)
+  const total = invoiceSubtotal + taxAmount
 
 
   const handleItemChange = (index, field, value) => {
@@ -170,9 +196,10 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
   }
 
   const handleEquipmentSelect = (index, selectedEquipment) => {
-    const dailyRate = parseFloat(selectedEquipment.daily_rate) || 0
+    const rate = parseFloat(selectedEquipment.rate) || 0
     const currentItem = formData.items[index]
-    const newTotal = (currentItem.quantity || 1) * dailyRate * (currentItem.days || 1)
+    const subtotal = (currentItem.quantity || 1) * rate * (currentItem.days || 1)
+    const newTotal = subtotal - (currentItem.item_discount_amount || 0)
     
     setFormData(prev => ({
       ...prev,
@@ -181,7 +208,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
           ...item, 
           equipment_id: selectedEquipment.id,
           equipment_name: selectedEquipment.name,
-          daily_rate: dailyRate,
+          rate: rate,
           description: selectedEquipment.description || '',
           total: newTotal
         } : item
@@ -203,8 +230,9 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
         equipment_name: '',
         description: '',
         quantity: 1,
-        daily_rate: 0,
+        rate: 0,
         days: 1,
+        item_discount_amount: 0,
         total: 0
       }]
     }))
@@ -240,6 +268,10 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
           },
           rental_start_date: formData.rental_start_date,
           rental_duration_days: formData.rental_duration_days,
+          transport_amount: transportAmount,
+          transport_discount: transportDiscount,
+          service_fee: serviceFee,
+          service_discount: serviceDiscount,
           notes: formData.notes,
           tax_amount: taxAmount,
           status: initialData.status || 'draft',
@@ -248,8 +280,9 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
             equipment_id: item.equipment_id,
             equipment_name: item.equipment_name,
             quantity: item.quantity,
-            daily_rate: item.daily_rate,
-            rental_days: item.days
+            rate: item.rate,
+            rental_days: item.days,
+            item_discount_amount: item.item_discount_amount
           }))
         }
 
@@ -266,6 +299,10 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
           },
           rental_start_date: formData.rental_start_date,
           rental_duration_days: formData.rental_duration_days,
+          transport_amount: transportAmount,
+          transport_discount: transportDiscount,
+          service_fee: serviceFee,
+          service_discount: serviceDiscount,
           notes: formData.notes,
           tax_amount: taxAmount,
           template_config: selectedTemplate.template_data,
@@ -274,8 +311,9 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
             equipment_name: item.equipment_name,
             description: item.description,
             quantity: item.quantity,
-            daily_rate: item.daily_rate,
-            rental_days: item.days
+            rate: item.rate,
+            rental_days: item.days,
+            item_discount_amount: item.item_discount_amount
           }))
         }
 
@@ -308,11 +346,16 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
       description: item.description,
       quantity: item.quantity,
       days: item.days,
-      daily_rate: item.daily_rate,
+      rate: item.rate,
+      item_discount_amount: item.item_discount_amount,
       total: item.total
     })),
-    subtotal,
+    subtotal: equipmentSubtotal,
     tax_amount: taxAmount,
+    transport_amount: transportAmount,
+    transport_discount: transportDiscount,
+    service_fee: serviceFee,
+    service_discount: serviceDiscount,
     total,
     notes: formData.notes || ''
   } : null
@@ -507,7 +550,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                         )}
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                         <div className="lg:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Equipment Name *
@@ -542,7 +585,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                                     >
                                       <div className="font-medium text-gray-900">{eq.name}</div>
                                       <div className="text-sm text-gray-500">
-                                        {formatCurrency(eq.daily_rate)}/day
+                                        {formatCurrency(eq.rate)}/day
                                         {eq.description && ` • ${eq.description}`}
                                       </div>
                                     </div>
@@ -573,7 +616,8 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                               const newQuantity = inputValue === '' ? '' : (parseInt(inputValue) || 1)
                               const item = formData.items[index]
                               const numericQuantity = typeof newQuantity === 'string' ? 1 : newQuantity
-                              const newTotal = numericQuantity * (item.daily_rate || 0) * (item.days || 1)
+                              const subtotal = numericQuantity * (item.rate || 0) * (item.days || 1)
+                              const newTotal = subtotal - (item.item_discount_amount || 0)
                               setFormData(prev => ({
                                 ...prev,
                                 items: prev.items.map((item, i) => 
@@ -597,7 +641,8 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                               const newDays = inputValue === '' ? '' : (parseInt(inputValue) || 1)
                               const item = formData.items[index]
                               const numericDays = typeof newDays === 'string' ? 1 : newDays
-                              const newTotal = (item.quantity || 1) * (item.daily_rate || 0) * numericDays
+                              const subtotal = (item.quantity || 1) * (item.rate || 0) * numericDays
+                              const newTotal = subtotal - (item.item_discount_amount || 0)
                               setFormData(prev => ({
                                 ...prev,
                                 items: prev.items.map((item, i) => 
@@ -610,26 +655,53 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                         
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Daily Rate
+                            Rate
                           </label>
                           <Input
                             type="number"
                             step="0.01"
                             min="0"
-                            value={item.daily_rate}
+                            value={item.rate}
                             onChange={(e) => {
                               const inputValue = e.target.value
                               const newRate = inputValue === '' ? '' : (parseFloat(inputValue) || 0)
                               const item = formData.items[index]
                               const numericRate = typeof newRate === 'string' ? 0 : newRate
-                              const newTotal = (item.quantity || 1) * numericRate * (item.days || 1)
+                              const subtotal = (item.quantity || 1) * numericRate * (item.days || 1)
+                              const newTotal = subtotal - (item.item_discount_amount || 0)
                               setFormData(prev => ({
                                 ...prev,
                                 items: prev.items.map((item, i) => 
-                                  i === index ? { ...item, daily_rate: newRate, total: newTotal } : item
+                                  i === index ? { ...item, rate: newRate, total: newTotal } : item
                                 )
                               }))
                             }}
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Item Discount
+                          </label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.item_discount_amount === 0 ? '' : item.item_discount_amount}
+                            onChange={(e) => {
+                              const inputValue = e.target.value
+                              const newDiscount = inputValue === '' ? 0 : (parseFloat(inputValue) || 0)
+                              const item = formData.items[index]
+                              const subtotal = (item.quantity || 1) * (item.rate || 0) * (item.days || 1)
+                              const newTotal = subtotal - newDiscount
+                              setFormData(prev => ({
+                                ...prev,
+                                items: prev.items.map((item, i) => 
+                                  i === index ? { ...item, item_discount_amount: newDiscount, total: newTotal } : item
+                                )
+                              }))
+                            }}
+                            placeholder="0.00"
                           />
                         </div>
                       </div>
@@ -670,22 +742,104 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
               </div>
             </div>
 
+            {/* Service Fee */}
+            <div className="card">
+              <div className="card-body">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Service Fee</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Service Fee Amount
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.service_fee === 0 ? '' : formData.service_fee}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                        setFormData({...formData, service_fee: value});
+                      }}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Service Discount
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.service_discount === 0 ? '' : formData.service_discount}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                        setFormData({...formData, service_discount: value});
+                      }}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Transport */}
+            <div className="card">
+              <div className="card-body">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Transport</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Transport Amount
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.transport_amount === 0 ? '' : formData.transport_amount}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                        setFormData({...formData, transport_amount: value});
+                      }}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Transport Discount
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.transport_discount === 0 ? '' : formData.transport_discount}
+                      onChange={(e) => {
+                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                        setFormData({...formData, transport_discount: value});
+                      }}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Summary */}
             <div className="card">
               <div className="card-body">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Invoice Summary</h3>
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal:</span>
-                    <span className="font-medium">{formatCurrency(subtotal)}</span>
+                    <span className="text-gray-600">Subtotal (Excl. VAT):</span>
+                    <span className="font-medium">{formatCurrency(invoiceSubtotal)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Tax ({((selectedTemplate?.template_data?.taxRate || 0.08) * 100).toFixed(1)}%):</span>
+                    <span className="text-gray-600">VAT @ {((selectedTemplate?.template_data?.taxRate || 0.15) * 100).toFixed(0)}%:</span>
                     <span className="font-medium">{formatCurrency(taxAmount)}</span>
                   </div>
                   <div className="border-t pt-2">
                     <div className="flex justify-between text-lg font-semibold">
-                      <span>Total:</span>
+                      <span>Total Due:</span>
                       <span>{formatCurrency(total)}</span>
                     </div>
                   </div>

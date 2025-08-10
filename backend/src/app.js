@@ -32,9 +32,6 @@ if (config.server.env !== 'test') {
   app.use(morgan('combined'));
 }
 
-// Static file serving for uploads
-app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
-
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ 
@@ -43,6 +40,13 @@ app.get('/health', (req, res) => {
     environment: config.server.env 
   });
 });
+
+// Static file serving for uploads with CORS
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+}, express.static(path.join(__dirname, '../uploads')));
 
 // API routes
 app.use('/api/equipment', require('./routes/equipment'));

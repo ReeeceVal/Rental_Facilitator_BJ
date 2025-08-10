@@ -187,7 +187,7 @@ export default function InvoiceDetail() {
                       <div>
                         <p className="font-medium">{item.equipment_name}</p>
                         <p className="text-sm text-gray-500">
-                          Qty: {item.quantity} × {item.rental_days} days @ {formatCurrency(item.daily_rate)}/day
+                          Qty: {item.quantity} × {item.rental_days} days @ {formatCurrency(item.rate)}/day
                         </p>
                       </div>
                     </div>

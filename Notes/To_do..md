@@ -4,19 +4,22 @@
 - Stripe Payment integration (---->autopayment of employees & equipment owners ---- Manual Capture)
 - Damage deposits 
 - Employee bank details registration 
+- Add estimated equipment replacement value to invoices and database 
 
 
--fix bank details 
--Image cannot be removed after added to a template
--When assigning employee to an invoice options must be [Organizer Commission, Setup & Takedown Commission, Custom service Assignment/s, Transport]
--Rental date changes everytime paid /unpaid /cancelled is pressed (must be fixed)
--rentals dont show up on callendar 
+***Render*** <---- use for hosting frontend, backend & postgresql
+
+
+
+
+- Invoice creator must allow for custom services 
+- When assigning employee to an invoice options must be [Organizer Commission, Setup & Takedown Commission, Custom service Assignment/s, Transport]
+- Employees must be able to be assigned to a certain custom service 
+
+-Image preview on template editor = broken 
+
 -equipment conflicts need to be shown in callendar or when making invoice 
--invoice creator must allow for custom services 
--employees must be able to be assigned to a certain custom service 
-- Rental duration needs to be removed from each specfic equipment item in the input form and rather but one input field for it 
--rate for each item needs to be standardized and unchangable when creating an invoice, only the discount field must be able to be adjusted. (Redundancy in the equipment and invoice_items tables for rate)
--remove uneccessary buttons 
+
 
 
 ****Auto assignment of suppliers.   [Customer only chats with chatbot and the application selects supplier for them]*****     ****concept***

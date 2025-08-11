@@ -87,25 +87,6 @@ export const useUpdateTemplate = () => {
   )
 }
 
-// Set template as default
-export const useSetDefaultTemplate = () => {
-  const queryClient = useQueryClient()
-  
-  return useMutation(
-    (id) => templatesAPI.setDefault(id),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('templates')
-        queryClient.invalidateQueries(['templates', 'default'])
-        toast.success('Default template updated!')
-      },
-      onError: (error) => {
-        const message = error.response?.data?.error || 'Failed to set default template'
-        toast.error(message)
-      },
-    }
-  )
-}
 
 // Duplicate template
 export const useDuplicateTemplate = () => {

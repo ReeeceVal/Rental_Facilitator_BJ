@@ -130,7 +130,6 @@ export const templatesAPI = {
   getDefault: () => api.get('/templates/default/active'),
   create: (data) => api.post('/templates', data),
   update: (id, data) => api.put(`/templates/${id}`, data),
-  setDefault: (id) => api.put(`/templates/${id}/default`),
   duplicate: (id) => api.post(`/templates/${id}/duplicate`),
   delete: (id) => api.delete(`/templates/${id}`),
 }

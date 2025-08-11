@@ -40,15 +40,19 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
         rental_duration_days: initialData.rental_duration_days || 1,
         transport_amount: parseFloat(initialData.transport_amount) || 0,
         transport_discount: parseFloat(initialData.transport_discount) || 0,
-        service_fee: parseFloat(initialData.service_fee) || 0,
-        service_discount: parseFloat(initialData.service_discount) || 0,
+        services: [{
+          name: 'Service Fee',
+          amount: parseFloat(initialData.service_fee) || 0,
+          discount: parseFloat(initialData.service_discount) || 0,
+          total: (parseFloat(initialData.service_fee) || 0) - (parseFloat(initialData.service_discount) || 0)
+        }].filter(service => service.amount > 0 || service.discount > 0),
         notes: initialData.notes || '',
         items: initialData.items?.map(item => ({
           equipment_id: item.equipment_id,
           equipment_name: item.equipment_name,
           description: item.equipment_description || '',
           quantity: item.quantity || 1,
-          rate: parseFloat(item.rate) || 0,
+          rate: parseFloat(item.equipment_rate || item.rate) || 0,
           days: item.rental_days || 1,
           item_discount_amount: parseFloat(item.item_discount_amount) || 0,
           total: parseFloat(item.line_total) || 0
@@ -67,14 +71,13 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
         rental_duration_days: extractedData.rental_duration_days || 1,
         transport_amount: 0,
         transport_discount: 0,
-        service_fee: 0,
-        service_discount: 0,
+        services: [],
         notes: extractedData.notes || '',
         items: extractedData.equipment?.map(item => {
           const quantity = item.quantity || 1
           const rate = item.rate || 0
           const days = 1
-          const total = quantity * dailyRate * days
+          const total = quantity * rate * days
           
           return {
             equipment_id: item.equipment_id || null,
@@ -110,8 +113,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
       rental_duration_days: 1,
       transport_amount: 0,
       transport_discount: 0,
-      service_fee: 0,
-      service_discount: 0,
+      services: [],
       notes: '',
       items: [
         {
@@ -131,15 +133,6 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
   // Invoice form data
   const [formData, setFormData] = useState(getInitialFormData)
 
-  // Duration options
-  const durationOptions = [
-    { value: 1, label: '1 Day' },
-    { value: 2, label: '2 Days' },
-    { value: 3, label: '3 Days' },
-    { value: 7, label: '1 Week' },
-    { value: 14, label: '2 Weeks' },
-    { value: 30, label: '1 Month' }
-  ]
 
 
   // Set template when templates are loaded
@@ -173,11 +166,10 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
   const equipmentSubtotal = formData.items.reduce((sum, item) => sum + (item.total || 0), 0)
   const transportAmount = parseFloat(formData.transport_amount) || 0
   const transportDiscount = parseFloat(formData.transport_discount) || 0
-  const serviceFee = parseFloat(formData.service_fee) || 0
-  const serviceDiscount = parseFloat(formData.service_discount) || 0
+  const servicesSubtotal = formData.services.reduce((sum, service) => sum + (service.total || 0), 0)
   
-  // Calculate full invoice subtotal (equipment + transport + service fees - discounts)
-  const invoiceSubtotal = equipmentSubtotal + transportAmount - transportDiscount + serviceFee - serviceDiscount
+  // Calculate full invoice subtotal (equipment + transport + services - transport discount)
+  const invoiceSubtotal = equipmentSubtotal + transportAmount - transportDiscount + servicesSubtotal
   
   // Calculate VAT on the full invoice subtotal
   const taxAmount = invoiceSubtotal * (selectedTemplate?.template_data?.taxRate || 0.15)
@@ -198,7 +190,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
   const handleEquipmentSelect = (index, selectedEquipment) => {
     const rate = parseFloat(selectedEquipment.rate) || 0
     const currentItem = formData.items[index]
-    const subtotal = (currentItem.quantity || 1) * rate * (currentItem.days || 1)
+    const subtotal = (currentItem.quantity || 1) * rate * formData.rental_duration_days
     const newTotal = subtotal - (currentItem.item_discount_amount || 0)
     
     setFormData(prev => ({
@@ -210,6 +202,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
           equipment_name: selectedEquipment.name,
           rate: rate,
           description: selectedEquipment.description || '',
+          days: typeof formData.rental_duration_days === 'string' ? 1 : formData.rental_duration_days,
           total: newTotal
         } : item
       )
@@ -231,10 +224,50 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
         description: '',
         quantity: 1,
         rate: 0,
-        days: 1,
+        days: prev.rental_duration_days,
         item_discount_amount: 0,
         total: 0
       }]
+    }))
+  }
+
+  const addService = () => {
+    setFormData(prev => ({
+      ...prev,
+      services: [...prev.services, {
+        name: '',
+        amount: 0,
+        discount: 0,
+        total: 0
+      }]
+    }))
+  }
+
+  const removeService = (index) => {
+    if (formData.services.length > 0) {
+      setFormData(prev => ({
+        ...prev,
+        services: prev.services.filter((_, i) => i !== index)
+      }))
+    }
+  }
+
+  const handleServiceChange = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      services: prev.services.map((service, i) => {
+        if (i === index) {
+          const updatedService = { ...service, [field]: value }
+          // Recalculate total when amount or discount changes
+          if (field === 'amount' || field === 'discount') {
+            const amount = field === 'amount' ? parseFloat(value) || 0 : parseFloat(updatedService.amount) || 0
+            const discount = field === 'discount' ? parseFloat(value) || 0 : parseFloat(updatedService.discount) || 0
+            updatedService.total = amount - discount
+          }
+          return updatedService
+        }
+        return service
+      })
     }))
   }
 
@@ -267,11 +300,10 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
             address: formData.customer_address
           },
           rental_start_date: formData.rental_start_date,
-          rental_duration_days: formData.rental_duration_days,
+          rental_duration_days: typeof formData.rental_duration_days === 'string' ? 1 : formData.rental_duration_days,
           transport_amount: transportAmount,
           transport_discount: transportDiscount,
-          service_fee: serviceFee,
-          service_discount: serviceDiscount,
+          services: formData.services,
           notes: formData.notes,
           tax_amount: taxAmount,
           status: initialData.status || 'draft',
@@ -281,7 +313,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
             equipment_name: item.equipment_name,
             quantity: item.quantity,
             rate: item.rate,
-            rental_days: item.days,
+            rental_days: typeof formData.rental_duration_days === 'string' ? 1 : formData.rental_duration_days,
             item_discount_amount: item.item_discount_amount
           }))
         }
@@ -298,11 +330,10 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
             address: formData.customer_address
           },
           rental_start_date: formData.rental_start_date,
-          rental_duration_days: formData.rental_duration_days,
+          rental_duration_days: typeof formData.rental_duration_days === 'string' ? 1 : formData.rental_duration_days,
           transport_amount: transportAmount,
           transport_discount: transportDiscount,
-          service_fee: serviceFee,
-          service_discount: serviceDiscount,
+          services: formData.services,
           notes: formData.notes,
           tax_amount: taxAmount,
           template_config: selectedTemplate.template_data,
@@ -312,7 +343,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
             description: item.description,
             quantity: item.quantity,
             rate: item.rate,
-            rental_days: item.days,
+            rental_days: typeof formData.rental_duration_days === 'string' ? 1 : formData.rental_duration_days,
             item_discount_amount: item.item_discount_amount
           }))
         }
@@ -345,7 +376,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
       name: item.equipment_name,
       description: item.description,
       quantity: item.quantity,
-      days: item.days,
+      days: typeof formData.rental_duration_days === 'string' ? 1 : formData.rental_duration_days,
       rate: item.rate,
       item_discount_amount: item.item_discount_amount,
       total: item.total
@@ -354,8 +385,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
     tax_amount: taxAmount,
     transport_amount: transportAmount,
     transport_discount: transportDiscount,
-    service_fee: serviceFee,
-    service_discount: serviceDiscount,
+    services: formData.services,
     total,
     notes: formData.notes || ''
   } : null
@@ -500,20 +530,31 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Rental Duration *
+                      Rental Duration (Days) *
                     </label>
-                    <select
+                    <Input
+                      type="number"
+                      min="1"
                       value={formData.rental_duration_days}
-                      onChange={(e) => setFormData({...formData, rental_duration_days: parseInt(e.target.value)})}
-                      className="input"
+                      onChange={(e) => {
+                        const inputValue = e.target.value;
+                        // Allow empty string for clearing, but ensure minimum 1 for calculations
+                        const newDuration = inputValue === '' ? '' : Math.max(1, parseInt(inputValue) || 1);
+                        const calculationDuration = typeof newDuration === 'string' ? 1 : newDuration;
+                        
+                        setFormData(prev => ({
+                          ...prev,
+                          rental_duration_days: newDuration,
+                          items: prev.items.map(item => ({
+                            ...item,
+                            days: calculationDuration,
+                            total: (item.quantity || 1) * (item.rate || 0) * calculationDuration - (item.item_discount_amount || 0)
+                          }))
+                        }));
+                      }}
+                      placeholder="Enter number of days"
                       required
-                    >
-                      {durationOptions.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 </div>
                 
@@ -616,7 +657,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                               const newQuantity = inputValue === '' ? '' : (parseInt(inputValue) || 1)
                               const item = formData.items[index]
                               const numericQuantity = typeof newQuantity === 'string' ? 1 : newQuantity
-                              const subtotal = numericQuantity * (item.rate || 0) * (item.days || 1)
+                              const subtotal = numericQuantity * (item.rate || 0) * formData.rental_duration_days
                               const newTotal = subtotal - (item.item_discount_amount || 0)
                               setFormData(prev => ({
                                 ...prev,
@@ -635,21 +676,10 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                           <Input
                             type="number"
                             min="1"
-                            value={item.days}
-                            onChange={(e) => {
-                              const inputValue = e.target.value
-                              const newDays = inputValue === '' ? '' : (parseInt(inputValue) || 1)
-                              const item = formData.items[index]
-                              const numericDays = typeof newDays === 'string' ? 1 : newDays
-                              const subtotal = (item.quantity || 1) * (item.rate || 0) * numericDays
-                              const newTotal = subtotal - (item.item_discount_amount || 0)
-                              setFormData(prev => ({
-                                ...prev,
-                                items: prev.items.map((item, i) => 
-                                  i === index ? { ...item, days: newDays, total: newTotal } : item
-                                )
-                              }))
-                            }}
+                            value={formData.rental_duration_days === '' ? '' : formData.rental_duration_days}
+                            readOnly
+                            className="bg-gray-50 text-gray-600"
+                            title="Days are set from the rental duration above"
                           />
                         </div>
                         
@@ -662,20 +692,9 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                             step="0.01"
                             min="0"
                             value={item.rate}
-                            onChange={(e) => {
-                              const inputValue = e.target.value
-                              const newRate = inputValue === '' ? '' : (parseFloat(inputValue) || 0)
-                              const item = formData.items[index]
-                              const numericRate = typeof newRate === 'string' ? 0 : newRate
-                              const subtotal = (item.quantity || 1) * numericRate * (item.days || 1)
-                              const newTotal = subtotal - (item.item_discount_amount || 0)
-                              setFormData(prev => ({
-                                ...prev,
-                                items: prev.items.map((item, i) => 
-                                  i === index ? { ...item, rate: newRate, total: newTotal } : item
-                                )
-                              }))
-                            }}
+                            readOnly
+                            className="bg-gray-50 text-gray-600"
+                            title="Rate is automatically set from selected equipment"
                           />
                         </div>
                         
@@ -692,7 +711,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                               const inputValue = e.target.value
                               const newDiscount = inputValue === '' ? 0 : (parseFloat(inputValue) || 0)
                               const item = formData.items[index]
-                              const subtotal = (item.quantity || 1) * (item.rate || 0) * (item.days || 1)
+                              const subtotal = (item.quantity || 1) * (item.rate || 0) * formData.rental_duration_days
                               const newTotal = subtotal - newDiscount
                               setFormData(prev => ({
                                 ...prev,
@@ -742,43 +761,96 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
               </div>
             </div>
 
-            {/* Service Fee */}
+            {/* Services */}
             <div className="card">
               <div className="card-body">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Service Fee</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Service Fee Amount
-                    </label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.service_fee === 0 ? '' : formData.service_fee}
-                      onChange={(e) => {
-                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
-                        setFormData({...formData, service_fee: value});
-                      }}
-                      placeholder="0.00"
-                    />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-2">
+                    <Package className="h-5 w-5 text-primary-600" />
+                    <h3 className="text-lg font-medium text-gray-900">Services</h3>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Service Discount
-                    </label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.service_discount === 0 ? '' : formData.service_discount}
-                      onChange={(e) => {
-                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
-                        setFormData({...formData, service_discount: value});
-                      }}
-                      placeholder="0.00"
-                    />
-                  </div>
+                  <Button type="button" size="sm" onClick={addService}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Service
+                  </Button>
+                </div>
+
+                <div className="space-y-4">
+                  {formData.services.map((service, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-medium text-gray-900">Service {index + 1}</h4>
+                        <button
+                          type="button"
+                          onClick={() => removeService(index)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Service Name *
+                          </label>
+                          <Input
+                            value={service.name}
+                            onChange={(e) => handleServiceChange(index, 'name', e.target.value)}
+                            placeholder="e.g., Setup Service, Delivery Fee"
+                            required
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Amount
+                          </label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={service.amount === 0 ? '' : service.amount}
+                            onChange={(e) => {
+                              const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                              handleServiceChange(index, 'amount', value);
+                            }}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Discount
+                          </label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={service.discount === 0 ? '' : service.discount}
+                            onChange={(e) => {
+                              const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                              handleServiceChange(index, 'discount', value);
+                            }}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 text-right">
+                        <span className="text-sm text-gray-500">Total: </span>
+                        <span className="text-lg font-semibold text-gray-900">
+                          {formatCurrency(service.total)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {formData.services.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      No services added. Click "Add Service" to add custom services to this invoice.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

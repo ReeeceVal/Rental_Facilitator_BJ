@@ -5,7 +5,7 @@ import { formatFileSize, isValidImageType } from '../../utils/helpers'
 import { MAX_FILE_SIZE, ALLOWED_IMAGE_TYPES } from '../../utils/constants'
 import Button from '../ui/Button'
 
-export default function LogoUpload({ onLogoChange, currentLogo = null, isUploading = false, onUploadStateChange }) {
+export default function LogoUpload({ onLogoChange, currentLogo = null, isUploading = false, onUploadStateChange, isExistingTemplate = false }) {
   const [selectedFile, setSelectedFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(currentLogo ? `http://localhost:3001${currentLogo}` : null)
   const [error, setError] = useState(null)
@@ -109,6 +109,11 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
     return selectedFile !== null
   }
 
+  // Update previewUrl when currentLogo changes (e.g., when template data loads)
+  useEffect(() => {
+    setPreviewUrl(currentLogo ? `http://localhost:3001${currentLogo}` : null)
+  }, [currentLogo])
+
   // Expose this function to parent component
   useEffect(() => {
     onUploadStateChange?.(hasPendingUpload())
@@ -120,7 +125,7 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
         Company Logo
       </label>
 
-      {!selectedFile && !previewUrl ? (
+      {!selectedFile && !currentLogo && !isExistingTemplate ? (
         <div
           {...getRootProps()}
           className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
@@ -170,6 +175,39 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
             </div>
           </div>
         </div>
+      ) : isExistingTemplate && !selectedFile && !currentLogo ? (
+        // Show "logo removed" state
+        <div className="space-y-3">
+          <div className="border rounded-lg p-4 bg-gray-50">
+            <div className="text-center space-y-3">
+              <div className="flex justify-center">
+                <X className="h-8 w-8 text-gray-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700">Logo Removed</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  The logo has been removed from this template. Invoices will not display a logo.
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex justify-center">
+            <div
+              {...getRootProps()}
+              className="cursor-pointer"
+            >
+              <input {...getInputProps()} />
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+              >
+                Add New Logo
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="space-y-3">
           {/* Logo Preview */}
@@ -200,7 +238,7 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
                     onClick={selectedFile ? handleRemoveFile : handleRemoveLogo}
                     className="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors"
                     disabled={isUploading}
-                    title={selectedFile ? 'Cancel upload' : 'Remove logo'}
+                    title={selectedFile ? 'Cancel new logo selection' : 'Remove current logo'}
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -229,9 +267,9 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
             </div>
           )}
 
-          {/* Add New Logo Button */}
+          {/* Action Buttons */}
           {!selectedFile && previewUrl && (
-            <div className="flex justify-center">
+            <div className="flex justify-center space-x-3">
               <Button
                 onClick={() => {
                   setPreviewUrl(null)
@@ -241,6 +279,14 @@ export default function LogoUpload({ onLogoChange, currentLogo = null, isUploadi
                 size="sm"
               >
                 Change Logo
+              </Button>
+              <Button
+                onClick={handleRemoveLogo}
+                variant="outline" 
+                size="sm"
+                className="text-red-600 hover:text-red-700 hover:border-red-300"
+              >
+                Remove Logo
               </Button>
             </div>
           )}

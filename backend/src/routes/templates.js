@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT * FROM invoice_templates 
-      ORDER BY is_default DESC, created_at ASC
+      ORDER BY created_at ASC
     `);
     
     res.json(result.rows);
@@ -99,18 +99,13 @@ router.post('/', templateValidation, async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, template_data, is_default = false } = req.body;
-
-    // If this template is being set as default, remove default from others
-    if (is_default) {
-      await client.query('UPDATE invoice_templates SET is_default = false');
-    }
+    const { name, template_data } = req.body;
 
     const result = await client.query(`
       INSERT INTO invoice_templates (name, template_data, is_default)
-      VALUES ($1, $2, $3)
+      VALUES ($1, $2, false)
       RETURNING *
-    `, [name, JSON.stringify(template_data), is_default]);
+    `, [name, JSON.stringify(template_data)]);
 
     await client.query('COMMIT');
     res.status(201).json(result.rows[0]);
@@ -139,7 +134,7 @@ router.put('/:id', templateValidation, async (req, res) => {
     }
 
     const { id } = req.params;
-    const { name, template_data, is_default = false } = req.body;
+    const { name, template_data } = req.body;
 
     // Check if template exists
     const checkResult = await client.query('SELECT * FROM invoice_templates WHERE id = $1', [id]);
@@ -147,17 +142,12 @@ router.put('/:id', templateValidation, async (req, res) => {
       return res.status(404).json({ error: 'Template not found' });
     }
 
-    // If this template is being set as default, remove default from others
-    if (is_default) {
-      await client.query('UPDATE invoice_templates SET is_default = false WHERE id != $1', [id]);
-    }
-
     const result = await client.query(`
       UPDATE invoice_templates 
-      SET name = $1, template_data = $2, is_default = $3, updated_at = NOW()
-      WHERE id = $4
+      SET name = $1, template_data = $2, updated_at = NOW()
+      WHERE id = $3
       RETURNING *
-    `, [name, JSON.stringify(template_data), is_default, id]);
+    `, [name, JSON.stringify(template_data), id]);
 
     await client.query('COMMIT');
     res.json(result.rows[0]);
@@ -170,42 +160,6 @@ router.put('/:id', templateValidation, async (req, res) => {
   }
 });
 
-// Set template as default
-router.put('/:id/default', async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    await client.query('BEGIN');
-    
-    const { id } = req.params;
-
-    // Check if template exists
-    const checkResult = await client.query('SELECT * FROM invoice_templates WHERE id = $1', [id]);
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Template not found' });
-    }
-
-    // Remove default from all templates
-    await client.query('UPDATE invoice_templates SET is_default = false');
-    
-    // Set this template as default
-    const result = await client.query(`
-      UPDATE invoice_templates 
-      SET is_default = true, updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
-    `, [id]);
-
-    await client.query('COMMIT');
-    res.json(result.rows[0]);
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error setting default template:', error);
-    res.status(500).json({ error: 'Failed to set default template' });
-  } finally {
-    client.release();
-  }
-});
 
 // Duplicate template
 router.post('/:id/duplicate', async (req, res) => {
@@ -235,50 +189,21 @@ router.post('/:id/duplicate', async (req, res) => {
 
 // Delete template
 router.delete('/:id', async (req, res) => {
-  const client = await pool.connect();
-  
   try {
-    await client.query('BEGIN');
-    
     const { id } = req.params;
 
-    // Check if template exists and if it's default
-    const checkResult = await client.query('SELECT * FROM invoice_templates WHERE id = $1', [id]);
+    // Check if template exists
+    const checkResult = await pool.query('SELECT * FROM invoice_templates WHERE id = $1', [id]);
     if (checkResult.rows.length === 0) {
       return res.status(404).json({ error: 'Template not found' });
     }
 
-    const template = checkResult.rows[0];
-    
-    // Don't allow deletion of default template if it's the only one
-    if (template.is_default) {
-      const countResult = await client.query('SELECT COUNT(*) as count FROM invoice_templates');
-      const totalCount = parseInt(countResult.rows[0].count);
-      
-      if (totalCount <= 1) {
-        return res.status(400).json({ error: 'Cannot delete the only template' });
-      }
-      
-      // If deleting default template, set another one as default
-      await client.query(`
-        UPDATE invoice_templates 
-        SET is_default = true, updated_at = NOW()
-        WHERE id != $1 
-        ORDER BY created_at ASC 
-        LIMIT 1
-      `, [id]);
-    }
+    const result = await pool.query('DELETE FROM invoice_templates WHERE id = $1 RETURNING *', [id]);
 
-    const result = await client.query('DELETE FROM invoice_templates WHERE id = $1 RETURNING *', [id]);
-
-    await client.query('COMMIT');
     res.json({ message: 'Template deleted successfully' });
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error deleting template:', error);
     res.status(500).json({ error: 'Failed to delete template' });
-  } finally {
-    client.release();
   }
 });
 

@@ -11,11 +11,10 @@ import {
   useCreateTemplate, 
   useUpdateTemplate, 
   useDeleteTemplate, 
-  useSetDefaultTemplate, 
   useDuplicateTemplate 
 } from '../hooks/useTemplates'
 
-function TemplateCard({ template, onEdit, onDelete, onSetDefault, onDuplicate, onPreview }) {
+function TemplateCard({ template, onEdit, onDelete, onDuplicate, onPreview }) {
   return (
     <div className="card">
       <div className="card-body">
@@ -24,11 +23,6 @@ function TemplateCard({ template, onEdit, onDelete, onSetDefault, onDuplicate, o
             <FileText className="h-6 w-6 text-primary-600" />
             <div>
               <h3 className="text-lg font-medium text-gray-900">{template.name}</h3>
-              {template.is_default && (
-                <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                  Default Template
-                </span>
-              )}
             </div>
           </div>
           
@@ -57,25 +51,14 @@ function TemplateCard({ template, onEdit, onDelete, onSetDefault, onDuplicate, o
               <Copy className="h-4 w-4" />
             </button>
             
-            {!template.is_default && (
-              <button
-                onClick={() => onSetDefault(template)}
-                className="text-gray-400 hover:text-green-600"
-                title="Set as Default"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
-            )}
             
-            {!template.is_default && (
-              <button
-                onClick={() => onDelete(template)}
-                className="text-gray-400 hover:text-red-600"
-                title="Delete Template"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
+            <button
+              onClick={() => onDelete(template)}
+              className="text-gray-400 hover:text-red-600"
+              title="Delete Template"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
@@ -144,6 +127,7 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
     bankName: '',
     accountName: '',
     accountNumber: '',
+    branchCode: '',
     routingNumber: '',
     iban: '',
     swiftCode: ''
@@ -171,6 +155,7 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
       bankName: '',
       accountName: '',
       accountNumber: '',
+      branchCode: '',
       routingNumber: '',
       iban: '',
       swiftCode: ''
@@ -382,6 +367,7 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
             onLogoChange={(logoUrl) => setFormData(prev => ({...prev, logoUrl}))}
             currentLogo={formData.logoUrl}
             onUploadStateChange={setHasPendingLogoUpload}
+            isExistingTemplate={!!template}
           />
         </div>
 
@@ -467,6 +453,17 @@ function TemplateForm({ template, isOpen, onClose, onSave }) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
+                Branch Code
+              </label>
+              <Input
+                value={formData.branchCode}
+                onChange={(e) => setFormData({...formData, branchCode: e.target.value})}
+                placeholder="e.g., 632005"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Routing Number
               </label>
               <Input
@@ -541,7 +538,6 @@ export default function Templates() {
   const createTemplate = useCreateTemplate()
   const updateTemplate = useUpdateTemplate()
   const deleteTemplate = useDeleteTemplate()
-  const setDefaultTemplate = useSetDefaultTemplate()
   const duplicateTemplate = useDuplicateTemplate()
 
   const handleEdit = (template) => {
@@ -556,10 +552,6 @@ export default function Templates() {
     if (window.confirm(`Are you sure you want to delete "${template.name}"?`)) {
       deleteTemplate.mutate(template.id)
     }
-  }
-
-  const handleSetDefault = (template) => {
-    setDefaultTemplate.mutate(template.id)
   }
 
   const handleDuplicate = (template) => {
@@ -627,7 +619,6 @@ export default function Templates() {
               template={template}
               onEdit={handleEdit}
               onDelete={handleDelete}
-              onSetDefault={handleSetDefault}
               onDuplicate={handleDuplicate}
               onPreview={handlePreview}
             />

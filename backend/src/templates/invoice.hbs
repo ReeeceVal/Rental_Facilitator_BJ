@@ -334,7 +334,7 @@
                     </td>
                     <td class="text-center">{{quantity}}</td>
                     <td class="text-center">{{rental_days}}</td>
-                    <td class="text-center">{{formatCurrency rate}}</td>
+                    <td class="text-center">{{formatCurrency equipment_rate}}</td>
                     <td class="text-center">
                         {{#if (gt item_discount_amount 0)}}
                             ({{formatCurrency item_discount_amount}})
@@ -343,22 +343,24 @@
                     <td class="text-right">{{formatCurrency line_total}}</td>
                 </tr>
                 {{/each}}
-                {{#if (gt service_fee 0)}}
+                {{#each services}}
+                {{#if (gt amount 0)}}
                 <tr>
                     <td style="padding-left: 30px;">
-                        <strong>Service Fee</strong>
+                        <strong>{{name}}</strong>
                     </td>
                     <td class="text-center"></td>
                     <td class="text-center"></td>
-                    <td class="text-center">{{formatCurrency service_fee}}</td>
+                    <td class="text-center">{{formatCurrency amount}}</td>
                     <td class="text-center">
-                        {{#if (gt service_discount 0)}}
-                            ({{formatCurrency service_discount}})
+                        {{#if (gt discount 0)}}
+                            ({{formatCurrency discount}})
                         {{/if}}
                     </td>
-                    <td class="text-right">{{formatCurrency (subtract service_fee service_discount)}}</td>
+                    <td class="text-right">{{formatCurrency (subtract amount discount)}}</td>
                 </tr>
                 {{/if}}
+                {{/each}}
                 {{#if (gt transport_amount 0)}}
                 <tr>
                     <td style="padding-left: 30px;">
@@ -399,10 +401,10 @@
         </div>
 
         <!-- Banking Details -->
-        {{#if (or templateConfig.bankName templateConfig.accountName templateConfig.accountNumber templateConfig.routingNumber templateConfig.iban templateConfig.swiftCode)}}
+        {{#if (or templateConfig.bankName templateConfig.accountName templateConfig.accountNumber templateConfig.branchCode templateConfig.routingNumber templateConfig.iban templateConfig.swiftCode)}}
         <div style="margin-top: 20px; font-size: 11px; color: #374151; line-height: 1.4;">
             {{#if templateConfig.bankName}}
-            <div>{{templateConfig.bankName}}</div>
+            <div>Bank: {{templateConfig.bankName}}</div>
             {{/if}}
             {{#if templateConfig.accountName}}
             <div>Account: {{templateConfig.accountName}}</div>
@@ -410,8 +412,11 @@
             {{#if templateConfig.accountNumber}}
             <div>Account Number: {{templateConfig.accountNumber}}</div>
             {{/if}}
+            {{#if templateConfig.branchCode}}
+            <div>Branch Code: {{templateConfig.branchCode}}</div>
+            {{/if}}
             {{#if templateConfig.routingNumber}}
-            <div>Branch Code: {{templateConfig.routingNumber}}</div>
+            <div>Routing Number: {{templateConfig.routingNumber}}</div>
             {{/if}}
             {{#if templateConfig.iban}}
             <div>IBAN: {{templateConfig.iban}}</div>

@@ -7,11 +7,11 @@ import {
   Trash2, 
   Plus, 
   Eye,
-  Filter,
   Search,
   Camera
 } from 'lucide-react'
-import { useInvoices, useDeleteInvoice, useGenerateInvoicePDF, useUpdateInvoice } from '../../hooks/useInvoices'
+import { useInvoices, useDeleteInvoice, useGenerateInvoicePDF } from '../../hooks/useInvoices'
+import { useQueryClient } from 'react-query'
 import { PageLoader } from '../shared/LoadingSpinner'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
@@ -26,6 +26,7 @@ export default function InvoiceList() {
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const debouncedSearch = debounce((value) => {
     setSearchTerm(value)
@@ -41,7 +42,6 @@ export default function InvoiceList() {
 
   const deleteInvoice = useDeleteInvoice()
   const generatePDF = useGenerateInvoicePDF()
-  const updateInvoice = useUpdateInvoice()
 
   const handleSearch = (e) => {
     debouncedSearch(e.target.value)
@@ -84,49 +84,24 @@ export default function InvoiceList() {
     }
     
     try {
-      const response = await fetch(`/api/invoices/${invoice.id}`)
-      const fullInvoiceData = await response.json()
-      
-      // Check different possible response structures
-      let invoiceData = null
-      if (fullInvoiceData.success && fullInvoiceData.data) {
-        invoiceData = fullInvoiceData.data
-      } else if (fullInvoiceData.data) {
-        invoiceData = fullInvoiceData.data
-      } else if (fullInvoiceData.invoice) {
-        invoiceData = fullInvoiceData.invoice
-      } else {
-        invoiceData = fullInvoiceData
-      }
-      
-      if (invoiceData && invoiceData.customer_id) {
-        // Ensure all required fields are present for validation
-        const updateData = {
-          customer_id: invoiceData.customer_id,
-          rental_start_date: invoiceData.rental_start_date,
-          rental_duration_days: invoiceData.rental_duration_days || 1,
-          transport_amount: invoiceData.transport_amount || 0,
-          transport_discount: invoiceData.transport_discount || 0,
-          service_fee: invoiceData.service_fee || 0,
-          service_discount: invoiceData.service_discount || 0,
-          items: (invoiceData.items || []).map(item => ({
-            equipment_id: item.equipment_id,
-            quantity: item.quantity || 1,
-            rate: item.rate || 0,
-            rental_days: item.rental_days || invoiceData.rental_duration_days || 1
-          })),
-          notes: invoiceData.notes || '',
-          tax_amount: invoiceData.tax_amount || 0,
-          status: newStatus
-        }
+      // Use the dedicated status update endpoint to avoid validation issues
+      const response = await fetch(`/api/invoices/${invoice.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      })
 
-        await updateInvoice.mutateAsync({
-          id: invoice.id,
-          data: updateData
-        })
+      if (!response.ok) {
+        throw new Error(`Failed to update invoice status: ${response.statusText}`)
       }
+
+      // Invalidate and refetch the invoices query to update the UI
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
     } catch (error) {
       console.error('Error toggling payment status:', error)
+      alert('Failed to update invoice status. Please try again.')
     }
   }
 
@@ -234,7 +209,6 @@ export default function InvoiceList() {
                             </p>
                             <button
                               onClick={() => handleTogglePaymentStatus(invoice)}
-                              disabled={updateInvoice.isLoading}
                               className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 min-w-[60px] justify-center ${INVOICE_STATUS_COLORS[invoice.status] || 'bg-gray-100 text-gray-800'}`}
                             >
                               {INVOICE_STATUS_LABELS[invoice.status]}

@@ -5,10 +5,13 @@ import Button from '../ui/Button'
 import Input, { Textarea } from '../ui/Input'
 import Modal from '../ui/Modal'
 import InvoicePreview from './InvoicePreview'
+import ServiceEmployeeAssignment from './ServiceEmployeeAssignment'
 import { useCreateInvoiceAndGeneratePDF, useUpdateInvoice } from '../../hooks/useInvoices'
 import { useEquipment } from '../../hooks/useEquipment'
 import { useTemplates } from '../../hooks/useTemplates'
+import { useServiceAssignments, processServiceAssignments, useCreateServiceAssignment, useUpdateServiceAssignment, useDeleteServiceAssignment } from '../../hooks/useServiceAssignments'
 import { formatCurrency, formatDate } from '../../utils/helpers'
+import { safeParseFloat, calculateServiceTotal, calculateInvoiceTotals } from '../../utils/invoiceCalculations'
 
 export default function InvoiceForm({ initialData = null, isEditing = false }) {
   const navigate = useNavigate()
@@ -16,6 +19,11 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
   const extractedData = location.state?.extractedData
   const createInvoiceAndGeneratePDF = useCreateInvoiceAndGeneratePDF()
   const updateInvoice = useUpdateInvoice()
+  
+  // Service assignment mutations (only used for existing invoices)
+  const createServiceAssignment = useCreateServiceAssignment(initialData?.id)
+  const updateServiceAssignment = useUpdateServiceAssignment(initialData?.id) 
+  const deleteServiceAssignment = useDeleteServiceAssignment(initialData?.id)
 
   // Fetch equipment data for dropdown
   const { data: equipmentData } = useEquipment({ active: 'true', limit: 1000 })
@@ -23,6 +31,12 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
 
   // Fetch templates
   const { data: templates = [], isLoading: templatesLoading } = useTemplates()
+  
+  // Fetch existing service assignments if editing
+  const { data: existingServiceAssignments = [] } = useServiceAssignments(
+    isEditing && initialData?.id ? initialData.id : null
+  )
+  
   const [selectedTemplate, setSelectedTemplate] = useState(null)
   const [showPreview, setShowPreview] = useState(false)
   const [equipmentSearchTerms, setEquipmentSearchTerms] = useState({})
@@ -38,24 +52,30 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
         customer_email: initialData.customer_email || '',
         rental_start_date: initialData.rental_start_date ? initialData.rental_start_date.split('T')[0] : '',
         rental_duration_days: initialData.rental_duration_days || 1,
-        transport_amount: parseFloat(initialData.transport_amount) || 0,
-        transport_discount: parseFloat(initialData.transport_discount) || 0,
-        services: [{
-          name: 'Service Fee',
-          amount: parseFloat(initialData.service_fee) || 0,
-          discount: parseFloat(initialData.service_discount) || 0,
-          total: (parseFloat(initialData.service_fee) || 0) - (parseFloat(initialData.service_discount) || 0)
-        }].filter(service => service.amount > 0 || service.discount > 0),
+        transport_amount: safeParseFloat(initialData.transport_amount),
+        transport_discount: safeParseFloat(initialData.transport_discount),
+        services: (initialData.services || []).map(service => {
+          const amount = safeParseFloat(service.amount)
+          const discount = safeParseFloat(service.discount)
+          const total = calculateServiceTotal({ amount, discount })
+          return {
+            id: service.id, // Preserve the invoice_services.id for assignments
+            name: service.service_name || service.name || 'Service Fee',
+            amount,
+            discount,
+            total
+          }
+        }),
         notes: initialData.notes || '',
         items: initialData.items?.map(item => ({
           equipment_id: item.equipment_id,
           equipment_name: item.equipment_name,
           description: item.equipment_description || '',
           quantity: item.quantity || 1,
-          rate: parseFloat(item.equipment_rate || item.rate) || 0,
+          rate: safeParseFloat(item.equipment_rate || item.rate),
           days: item.rental_days || 1,
-          item_discount_amount: parseFloat(item.item_discount_amount) || 0,
-          total: parseFloat(item.line_total) || 0
+          item_discount_amount: safeParseFloat(item.item_discount_amount),
+          total: safeParseFloat(item.line_total)
         })) || []
       }
     }
@@ -132,6 +152,17 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
 
   // Invoice form data
   const [formData, setFormData] = useState(getInitialFormData)
+  
+  // Service employee assignments (serviceId -> assignments array)
+  const [serviceAssignments, setServiceAssignments] = useState({})
+
+  // Load existing service assignments when editing
+  useEffect(() => {
+    if (isEditing && existingServiceAssignments && existingServiceAssignments.length > 0) {
+      const processedAssignments = processServiceAssignments(existingServiceAssignments)
+      setServiceAssignments(processedAssignments)
+    }
+  }, [isEditing, existingServiceAssignments])
 
 
 
@@ -158,24 +189,25 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
       const newFormData = getInitialFormData()
       console.log('InvoiceForm: Transformed form data:')
       console.log('InvoiceForm: newFormData=', newFormData)
+      console.log('InvoiceForm: services in newFormData=', newFormData.services)
+      console.log('InvoiceForm: initialData services=', initialData?.services)
       setFormData(newFormData)
     }
   }, [isEditing, initialData, getInitialFormData])
 
-  // Calculate totals
-  const equipmentSubtotal = formData.items.reduce((sum, item) => sum + (item.total || 0), 0)
-  const transportAmount = parseFloat(formData.transport_amount) || 0
-  const transportDiscount = parseFloat(formData.transport_discount) || 0
-  const servicesSubtotal = formData.services.reduce((sum, service) => sum + (service.total || 0), 0)
+  // Calculate totals using the centralized utility
+  const taxRate = safeParseFloat(selectedTemplate?.template_data?.taxRate)
+  const totals = calculateInvoiceTotals(formData, taxRate)
   
-  // Calculate full invoice subtotal (equipment + transport + services - transport discount)
-  const invoiceSubtotal = equipmentSubtotal + transportAmount - transportDiscount + servicesSubtotal
-  
-  // Calculate VAT on the full invoice subtotal
-  const taxAmount = invoiceSubtotal * (selectedTemplate?.template_data?.taxRate || 0.15)
-  
-  // Calculate total due (subtotal + VAT)
-  const total = invoiceSubtotal + taxAmount
+  const {
+    equipmentSubtotal,
+    transportAmount,
+    transportDiscount,
+    servicesSubtotal,
+    invoiceSubtotal,
+    taxAmount,
+    totalDue: total
+  } = totals
 
 
   const handleItemChange = (index, field, value) => {
@@ -260,15 +292,66 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
           const updatedService = { ...service, [field]: value }
           // Recalculate total when amount or discount changes
           if (field === 'amount' || field === 'discount') {
-            const amount = field === 'amount' ? parseFloat(value) || 0 : parseFloat(updatedService.amount) || 0
-            const discount = field === 'discount' ? parseFloat(value) || 0 : parseFloat(updatedService.discount) || 0
-            updatedService.total = amount - discount
+            const amount = field === 'amount' ? safeParseFloat(value) : safeParseFloat(updatedService.amount)
+            const discount = field === 'discount' ? safeParseFloat(value) : safeParseFloat(updatedService.discount)
+            updatedService.total = calculateServiceTotal({ amount, discount })
           }
           return updatedService
         }
         return service
       })
     }))
+  }
+
+  const handleServiceAssignmentChange = async (serviceId, assignments) => {
+    // Update local state
+    setServiceAssignments(prev => ({
+      ...prev,
+      [serviceId]: assignments
+    }))
+
+    // For existing invoices, persist assignments immediately
+    // Only persist if we have a valid numeric service ID (actual database ID, not array index)
+    if (isEditing && initialData?.id && serviceId && !isNaN(serviceId) && serviceId > 0) {
+      try {
+        // Get current assignments from the server to compare
+        const currentAssignments = existingServiceAssignments.filter(
+          assignment => assignment.invoice_service_id === serviceId
+        )
+
+        // Handle new assignments
+        for (const assignment of assignments) {
+          if (assignment.employee_id && (!assignment.id || assignment.id.toString().startsWith('temp-'))) {
+            // This is a new assignment, create it
+            await createServiceAssignment.mutateAsync({
+              invoice_service_id: serviceId,
+              employee_id: assignment.employee_id,
+              commission_percentage: assignment.commission_percentage || 50
+            })
+          } else if (assignment.id && !assignment.id.toString().startsWith('temp-')) {
+            // This is an existing assignment, update it
+            await updateServiceAssignment.mutateAsync({
+              assignmentId: assignment.id,
+              data: {
+                commission_percentage: assignment.commission_percentage || 50
+              }
+            })
+          }
+        }
+
+        // Handle deleted assignments
+        const assignmentIds = assignments.map(a => a.id).filter(id => id && !id.toString().startsWith('temp-'))
+        for (const currentAssignment of currentAssignments) {
+          if (!assignmentIds.includes(currentAssignment.id)) {
+            // This assignment was removed, delete it
+            await deleteServiceAssignment.mutateAsync(currentAssignment.id)
+          }
+        }
+      } catch (error) {
+        console.error('Error saving service assignments:', error)
+        // You might want to show a toast notification here
+      }
+    }
   }
 
   const removeItem = (index) => {
@@ -303,7 +386,12 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
           rental_duration_days: typeof formData.rental_duration_days === 'string' ? 1 : formData.rental_duration_days,
           transport_amount: transportAmount,
           transport_discount: transportDiscount,
-          services: formData.services,
+          services: formData.services.map(service => ({
+            service_name: service.name,
+            name: service.name,
+            amount: service.amount,
+            discount: service.discount
+          })),
           notes: formData.notes,
           tax_amount: taxAmount,
           status: initialData.status || 'draft',
@@ -333,7 +421,12 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
           rental_duration_days: typeof formData.rental_duration_days === 'string' ? 1 : formData.rental_duration_days,
           transport_amount: transportAmount,
           transport_discount: transportDiscount,
-          services: formData.services,
+          services: formData.services.map(service => ({
+            service_name: service.name,
+            name: service.name,
+            amount: service.amount,
+            discount: service.discount
+          })),
           notes: formData.notes,
           tax_amount: taxAmount,
           template_config: selectedTemplate.template_data,
@@ -812,7 +905,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                             min="0"
                             value={service.amount === 0 ? '' : service.amount}
                             onChange={(e) => {
-                              const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                              const value = e.target.value === '' ? 0 : safeParseFloat(e.target.value);
                               handleServiceChange(index, 'amount', value);
                             }}
                             placeholder="0.00"
@@ -829,7 +922,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                             min="0"
                             value={service.discount === 0 ? '' : service.discount}
                             onChange={(e) => {
-                              const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                              const value = e.target.value === '' ? 0 : safeParseFloat(e.target.value);
                               handleServiceChange(index, 'discount', value);
                             }}
                             placeholder="0.00"
@@ -842,6 +935,19 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                         <span className="text-lg font-semibold text-gray-900">
                           {formatCurrency(service.total)}
                         </span>
+                      </div>
+
+                      {/* Service Employee Assignment */}
+                      <div className="mt-4">
+                        <ServiceEmployeeAssignment
+                          serviceId={service.id || index} // Use actual service ID when available, fallback to index
+                          serviceName={service.name || `Service ${index + 1}`}
+                          serviceAmount={service.amount || 0}
+                          serviceDiscount={service.discount || 0}
+                          assignments={serviceAssignments[service.id || index] || []}
+                          onAssignmentsChange={handleServiceAssignmentChange}
+                          readOnly={false}
+                        />
                       </div>
                     </div>
                   ))}
@@ -870,7 +976,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                       min="0"
                       value={formData.transport_amount === 0 ? '' : formData.transport_amount}
                       onChange={(e) => {
-                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                        const value = e.target.value === '' ? 0 : safeParseFloat(e.target.value);
                         setFormData({...formData, transport_amount: value});
                       }}
                       placeholder="0.00"
@@ -886,7 +992,7 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                       min="0"
                       value={formData.transport_discount === 0 ? '' : formData.transport_discount}
                       onChange={(e) => {
-                        const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                        const value = e.target.value === '' ? 0 : safeParseFloat(e.target.value);
                         setFormData({...formData, transport_discount: value});
                       }}
                       placeholder="0.00"
@@ -905,10 +1011,12 @@ export default function InvoiceForm({ initialData = null, isEditing = false }) {
                     <span className="text-gray-600">Subtotal (Excl. VAT):</span>
                     <span className="font-medium">{formatCurrency(invoiceSubtotal)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">VAT @ {((selectedTemplate?.template_data?.taxRate || 0.15) * 100).toFixed(0)}%:</span>
-                    <span className="font-medium">{formatCurrency(taxAmount)}</span>
-                  </div>
+                  {taxAmount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">TAX @ {(taxRate * 100).toFixed(0)}%:</span>
+                      <span className="font-medium">{formatCurrency(taxAmount)}</span>
+                    </div>
+                  )}
                   <div className="border-t pt-2">
                     <div className="flex justify-between text-lg font-semibold">
                       <span>Total Due:</span>

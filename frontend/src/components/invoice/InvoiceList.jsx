@@ -16,6 +16,7 @@ import { PageLoader } from '../shared/LoadingSpinner'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import { formatCurrency, formatDate, debounce } from '../../utils/helpers'
+import { safeParseFloat } from '../../utils/invoiceCalculations'
 import { 
   INVOICE_STATUS_LABELS,
   INVOICE_STATUS_COLORS
@@ -199,7 +200,7 @@ export default function InvoiceList() {
                               {invoice.invoice_number}
                             </p>
                             <p className="sm:hidden text-base font-semibold text-gray-900">
-                              {formatCurrency(invoice.total_amount)}
+                              {formatCurrency(safeParseFloat(invoice.total_due))}
                             </p>
                           </div>
                           {/* Second line on mobile: Customer & Status */}
@@ -226,7 +227,7 @@ export default function InvoiceList() {
                       <div className="mt-4 sm:mt-0 sm:ml-6 flex items-center justify-between">
                         <div className="hidden sm:block text-right">
                           <p className="text-lg font-semibold text-gray-900">
-                            {formatCurrency(invoice.total_amount)}
+                            {formatCurrency(safeParseFloat(invoice.total_due))}
                           </p>
                         </div>
                         <div className="flex space-x-1 sm:ml-4">

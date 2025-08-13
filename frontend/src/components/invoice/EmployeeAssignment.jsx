@@ -6,6 +6,7 @@ import { useEmployees } from '../../hooks/useEmployees'
 export default function EmployeeAssignment({ 
   invoiceId, 
   assignments = [], 
+  serviceAssignments = [],
   onAssignmentsChange,
   readOnly = false 
 }) {
@@ -273,6 +274,66 @@ export default function EmployeeAssignment({
               Assign Employee
             </Button>
           )}
+        </div>
+      )}
+
+      {/* Service Assignments Section */}
+      {serviceAssignments && serviceAssignments.length > 0 && (
+        <div className="mt-6">
+          <div className="border-t border-gray-200 pt-4">
+            <h4 className="text-md font-medium text-gray-900 mb-3">Service-Specific Assignments</h4>
+            <div className="space-y-3">
+              {serviceAssignments.map((serviceAssignment, index) => (
+                <div key={index} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h5 className="text-sm font-medium text-gray-900">
+                      {serviceAssignment.service_name}
+                    </h5>
+                    <div className="text-xs text-gray-500">
+                      Service Amount: {new Intl.NumberFormat('en-ZA', { 
+                        style: 'currency', 
+                        currency: 'ZAR' 
+                      }).format((serviceAssignment.service_amount || 0) - (serviceAssignment.service_discount || 0))}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {serviceAssignment.assignments && serviceAssignment.assignments.map((assignment, assignmentIndex) => (
+                      <div key={assignmentIndex} className="flex items-center justify-between text-sm bg-white border border-gray-200 rounded p-2">
+                        <div className="flex items-center space-x-3">
+                          <span className="font-medium text-gray-900">
+                            {assignment.employee_name}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-3 text-xs text-gray-600">
+                          <span>
+                            {assignment.commission_percentage}%
+                          </span>
+                          <span className="font-medium">
+                            {new Intl.NumberFormat('en-ZA', { 
+                              style: 'currency', 
+                              currency: 'ZAR' 
+                            }).format(assignment.commission_amount || 0)}
+                          </span>
+                          {assignment.paid_at && (
+                            <span className="text-green-600 bg-green-100 px-2 py-1 rounded">
+                              Paid
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {(!serviceAssignment.assignments || serviceAssignment.assignments.length === 0) && (
+                      <div className="text-xs text-gray-500 italic">
+                        No employees assigned to this service
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

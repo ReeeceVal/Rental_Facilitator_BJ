@@ -48,6 +48,7 @@ export function useUpdateInvoice() {
       onSuccess: (data, variables) => {
         queryClient.invalidateQueries('invoices')
         queryClient.invalidateQueries(['invoices', variables.id])
+        queryClient.invalidateQueries(['service-assignments', variables.id])
         toast.success('Invoice updated successfully')
       },
       onError: (error) => {
@@ -78,12 +79,23 @@ export function useGenerateInvoicePDF() {
     (id) => invoicesAPI.generatePDF(id),
     {
       onSuccess: (response, invoiceId) => {
+        // Extract filename from Content-Disposition header
+        const contentDisposition = response.headers['content-disposition']
+        let filename = `invoice-${invoiceId}.pdf` // fallback
+        
+        if (contentDisposition && contentDisposition.includes('filename=')) {
+          const filenameMatch = contentDisposition.match(/filename="(.+)"/)
+          if (filenameMatch) {
+            filename = filenameMatch[1]
+          }
+        }
+        
         // Create blob and download
         const blob = new Blob([response.data], { type: 'application/pdf' })
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `invoice-${invoiceId}.pdf`
+        link.download = filename
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -112,12 +124,23 @@ export function useCreateInvoiceAndGeneratePDF() {
       onSuccess: (response) => {
         queryClient.invalidateQueries('invoices')
         
+        // Extract filename from Content-Disposition header
+        const contentDisposition = response.headers['content-disposition']
+        let filename = 'invoice.pdf' // fallback
+        
+        if (contentDisposition && contentDisposition.includes('filename=')) {
+          const filenameMatch = contentDisposition.match(/filename="(.+)"/)
+          if (filenameMatch) {
+            filename = filenameMatch[1]
+          }
+        }
+        
         // Create blob and download PDF
         const blob = new Blob([response.data], { type: 'application/pdf' })
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `invoice.pdf`
+        link.download = filename
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)

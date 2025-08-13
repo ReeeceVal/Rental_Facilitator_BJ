@@ -7,50 +7,89 @@ const handlebars = require('handlebars');
 const fs = require('fs').promises;
 const path = require('path');
 const { formatCurrency, formatDate } = require('../utils/helpers');
+const { safeParseFloat } = require('../utils/invoiceCalculations');
+
+// Helper function to generate PDF filename
+const generatePDFFilename = (invoice) => {
+  const invoiceNumber = invoice.invoice_number || 'INV-Unknown';
+  const customerName = (invoice.customer_name || 'Unknown Customer')
+    .replace(/[^a-zA-Z0-9\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .substring(0, 30); // Limit length
+  
+  const rentalDate = invoice.rental_start_date 
+    ? new Date(invoice.rental_start_date).toISOString().split('T')[0] // Format as YYYY-MM-DD
+    : 'Unknown-Date';
+  
+  return `${invoiceNumber}-${customerName}-(${rentalDate}).pdf`;
+};
 const router = express.Router();
 
 const calculateCommissions = async (invoiceId, totalAmount, client = pool) => {
   try {
+    // Calculate standard role commissions (organizer/setup)
     const assignments = await client.query(
       'SELECT * FROM invoice_employee_assignments WHERE invoice_id = $1',
       [invoiceId]
     );
 
-    if (assignments.rows.length === 0) return;
+    if (assignments.rows.length > 0) {
+      const organizerAssignments = assignments.rows.filter(a => a.role === 'organizer');
+      const setupAssignments = assignments.rows.filter(a => a.role === 'setup');
 
-    const organizerAssignments = assignments.rows.filter(a => a.role === 'organizer');
-    const setupAssignments = assignments.rows.filter(a => a.role === 'setup');
+      const organizerCommission = 0.05; // 5%
+      const setupTotalCommission = 0.30; // 30% total
+      const setupIndividualCommission = setupAssignments.length > 0 ? 
+        setupTotalCommission / setupAssignments.length : 0;
 
-    const organizerCommission = 0.05; // 5%
-    const setupTotalCommission = 0.30; // 30% total
-    const setupIndividualCommission = setupAssignments.length > 0 ? 
-      setupTotalCommission / setupAssignments.length : 0;
+      // Update organizer assignments with commission calculations
+      for (const assignment of organizerAssignments) {
+        const commissionAmount = totalAmount * organizerCommission;
+        
+        await client.query(`
+          UPDATE invoice_employee_assignments 
+          SET commission_percentage = $1, 
+              commission_amount = $2,
+              base_amount = $3
+          WHERE id = $4
+        `, [organizerCommission * 100, commissionAmount, totalAmount, assignment.id]);
+      }
 
-    // Update organizer assignments with commission calculations
-    for (const assignment of organizerAssignments) {
-      const commissionAmount = totalAmount * organizerCommission;
-      
-      await client.query(`
-        UPDATE invoice_employee_assignments 
-        SET commission_percentage = $1, 
-            commission_amount = $2,
-            base_amount = $3
-        WHERE id = $4
-      `, [organizerCommission * 100, commissionAmount, totalAmount, assignment.id]);
+      // Update setup assignments with commission calculations
+      for (const assignment of setupAssignments) {
+        const commissionAmount = totalAmount * setupIndividualCommission;
+        
+        await client.query(`
+          UPDATE invoice_employee_assignments 
+          SET commission_percentage = $1, 
+              commission_amount = $2,
+              base_amount = $3
+          WHERE id = $4
+        `, [setupIndividualCommission * 100, commissionAmount, totalAmount, assignment.id]);
+      }
     }
 
-    // Update setup assignments with commission calculations
-    for (const assignment of setupAssignments) {
-      const commissionAmount = totalAmount * setupIndividualCommission;
+    // Calculate service-specific commissions
+    const serviceAssignments = await client.query(`
+      SELECT sea.*, ins.amount as service_amount, ins.discount as service_discount
+      FROM service_employee_assignments sea
+      JOIN invoice_services ins ON sea.invoice_service_id = ins.id
+      WHERE ins.invoice_id = $1
+    `, [invoiceId]);
+
+    // Update service-specific assignments with commission calculations
+    for (const assignment of serviceAssignments.rows) {
+      const serviceNetAmount = parseFloat(assignment.service_amount) - parseFloat(assignment.service_discount || 0);
+      const commissionDecimal = parseFloat(assignment.commission_percentage) / 100;
+      const commissionAmount = serviceNetAmount * commissionDecimal;
       
       await client.query(`
-        UPDATE invoice_employee_assignments 
-        SET commission_percentage = $1, 
-            commission_amount = $2,
-            base_amount = $3
-        WHERE id = $4
-      `, [setupIndividualCommission * 100, commissionAmount, totalAmount, assignment.id]);
+        UPDATE service_employee_assignments 
+        SET commission_amount = $1
+        WHERE id = $2
+      `, [commissionAmount, assignment.id]);
     }
+
   } catch (error) {
     console.error('Error calculating commissions:', error);
     throw error;
@@ -65,6 +104,7 @@ const invoiceValidation = [
   body('transport_amount').optional().isFloat({ min: 0 }).withMessage('Transport amount must be positive'),
   body('transport_discount').optional().isFloat({ min: 0 }).withMessage('Transport discount must be positive'),
   body('services').optional().isArray().withMessage('Services must be an array'),
+  body('services.*.service_name').optional().isString().withMessage('Service name must be a string'),
   body('services.*.name').optional().isString().withMessage('Service name must be a string'),
   body('services.*.amount').optional().isFloat({ min: 0 }).withMessage('Service amount must be positive'),
   body('services.*.discount').optional().isFloat({ min: 0 }).withMessage('Service discount must be positive'),
@@ -137,7 +177,7 @@ router.get('/', async (req, res) => {
     // Map database column names to frontend expected names for backward compatibility
     const invoices = result.rows.map(invoice => ({
       ...invoice,
-      total_amount: invoice.total_due,
+      total_due: invoice.total_due,
       subtotal: invoice.equipment_subtotal,
       tax_amount: invoice.vat_amount
     }));
@@ -309,8 +349,17 @@ router.get('/:id', async (req, res) => {
       ORDER BY ii.id
     `, [id]);
 
+    // Get invoice services
+    const servicesResult = await pool.query(`
+      SELECT id, service_name, amount, discount
+      FROM invoice_services
+      WHERE invoice_id = $1
+      ORDER BY id
+    `, [id]);
+
     const invoice = invoiceResult.rows[0];
     invoice.items = itemsResult.rows;
+    invoice.services = servicesResult.rows;
 
     res.json(invoice);
   } catch (error) {
@@ -350,17 +399,17 @@ router.post('/', invoiceValidation, async (req, res) => {
       subtotal += (equipmentRate * item.quantity * item.rental_days) - itemDiscount;
     }
     
-    const total_amount = subtotal + parseFloat(tax_amount);
+    const total_due = subtotal + parseFloat(tax_amount);
     const invoice_number = generateInvoiceNumber();
 
     // Create invoice
     const invoiceResult = await client.query(`
       INSERT INTO invoices (invoice_number, customer_id, rental_start_date, 
-                           rental_duration_days, subtotal, tax_amount, total_amount, notes, template_id)
+                           rental_duration_days, subtotal, tax_amount, total_due, notes, template_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `, [invoice_number, customer_id, rental_start_date, rental_duration_days,
-        subtotal, tax_amount, total_amount, notes, template_id]);
+        subtotal, tax_amount, total_due, notes, template_id]);
 
     const invoice = invoiceResult.rows[0];
 
@@ -458,6 +507,15 @@ router.put('/:id', invoiceValidation, async (req, res) => {
       template_id
     } = req.body;
 
+    // Get template tax rate first
+    let template_tax_rate = 0;
+    if (template_id) {
+      const templateResult = await client.query('SELECT template_data FROM invoice_templates WHERE id = $1', [template_id]);
+      if (templateResult.rows.length > 0) {
+        template_tax_rate = parseFloat(templateResult.rows[0].template_data?.taxRate) || 0;
+      }
+    }
+
     // Calculate equipment subtotal (including item discounts)
     let equipment_subtotal = 0;
     for (const item of items) {
@@ -468,18 +526,18 @@ router.put('/:id', invoiceValidation, async (req, res) => {
       equipment_subtotal += line_total;
     }
     
-    // Calculate services totals (for backward compatibility with DB schema)
+    // Calculate services totals
     const service_fee = services.reduce((sum, service) => sum + (parseFloat(service.amount) || 0), 0);
     const service_discount = services.reduce((sum, service) => sum + (parseFloat(service.discount) || 0), 0);
     
     // Calculate full invoice subtotal (equipment + transport + service fees - discounts)
     const invoice_subtotal = equipment_subtotal + parseFloat(transport_amount) - parseFloat(transport_discount) + service_fee - service_discount;
     
-    // Calculate VAT on the full invoice subtotal
-    const vat_amount = invoice_subtotal * 0.15; // 15% VAT
+    // Calculate VAT using template tax rate
+    const vat_amount = invoice_subtotal * template_tax_rate;
     
     // Calculate total due (subtotal + VAT)
-    const total_amount = invoice_subtotal + vat_amount;
+    const total_due = invoice_subtotal + vat_amount;
 
     // Update customer information if provided
     if (customer_data && customer_id) {
@@ -501,19 +559,28 @@ router.put('/:id', invoiceValidation, async (req, res) => {
       UPDATE invoices 
       SET customer_id = $1, rental_start_date = $2, rental_duration_days = $3, 
           equipment_subtotal = $4, vat_amount = $5, transport_amount = $6, transport_discount = $7,
-          service_fee = $8, service_discount = $9, total_due = $10, notes = $11, 
-          status = $12, template_id = $13, updated_at = NOW()
-      WHERE id = $14
+          total_due = $8, notes = $9, status = $10, template_id = $11, updated_at = NOW()
+      WHERE id = $12
       RETURNING *
     `, [customer_id, rental_start_date, rental_duration_days, equipment_subtotal, vat_amount, 
-        transport_amount, transport_discount, service_fee, service_discount, total_amount, notes, status, template_id, id]);
+        transport_amount, transport_discount, total_due, notes, status, template_id, id]);
 
     if (invoiceResult.rows.length === 0) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    // Delete existing items and recreate
+    // Delete existing items and services, then recreate
     await client.query('DELETE FROM invoice_items WHERE invoice_id = $1', [id]);
+    
+    // Store existing service employee assignments before deleting services
+    const existingServiceAssignments = await client.query(`
+      SELECT sea.*, ins.service_name
+      FROM service_employee_assignments sea
+      JOIN invoice_services ins ON sea.invoice_service_id = ins.id
+      WHERE ins.invoice_id = $1
+    `, [id]);
+    
+    await client.query('DELETE FROM invoice_services WHERE invoice_id = $1', [id]);
 
     // Create new invoice items
     for (const item of items) {
@@ -526,6 +593,33 @@ router.put('/:id', invoiceValidation, async (req, res) => {
         INSERT INTO invoice_items (invoice_id, equipment_id, quantity, rental_days, item_discount_amount, line_total)
         VALUES ($1, $2, $3, $4, $5, $6)
       `, [id, item.equipment_id, item.quantity, item.rental_days, item_discount, line_total]);
+    }
+
+    // Create new invoice services and restore employee assignments
+    const serviceAssignmentMap = {};
+    for (const service of services) {
+      const serviceName = service.service_name || service.name;
+      if (serviceName && serviceName.trim()) {
+        const serviceResult = await client.query(`
+          INSERT INTO invoice_services (invoice_id, service_name, amount, discount)
+          VALUES ($1, $2, $3, $4)
+          RETURNING id
+        `, [id, serviceName, parseFloat(service.amount) || 0, parseFloat(service.discount) || 0]);
+        
+        const newServiceId = serviceResult.rows[0].id;
+        serviceAssignmentMap[serviceName] = newServiceId;
+      }
+    }
+    
+    // Restore service employee assignments with new service IDs
+    for (const assignment of existingServiceAssignments.rows) {
+      const newServiceId = serviceAssignmentMap[assignment.service_name];
+      if (newServiceId) {
+        await client.query(`
+          INSERT INTO service_employee_assignments (invoice_service_id, employee_id, commission_percentage, commission_amount, paid_at)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [newServiceId, assignment.employee_id, assignment.commission_percentage, assignment.commission_amount, assignment.paid_at]);
+      }
     }
 
     await client.query('COMMIT');
@@ -568,29 +662,27 @@ router.get('/:id/pdf', async (req, res) => {
     const invoice = invoiceResult.rows[0];
     invoice.items = itemsResult.rows;
     
-    // Ensure numeric fields are properly converted for PDF generation
-    invoice.equipment_subtotal = parseFloat(invoice.equipment_subtotal) || 0;
-    invoice.vat_amount = parseFloat(invoice.vat_amount) || 0;
-    invoice.transport_amount = parseFloat(invoice.transport_amount) || 0;
-    invoice.transport_discount = parseFloat(invoice.transport_discount) || 0;
-    invoice.service_fee = parseFloat(invoice.service_fee) || 0;
-    invoice.service_discount = parseFloat(invoice.service_discount) || 0;
-    invoice.total_due = parseFloat(invoice.total_due) || 0;
+    // Get invoice services
+    const servicesResult = await pool.query(`
+      SELECT service_name, amount, discount
+      FROM invoice_services
+      WHERE invoice_id = $1
+      ORDER BY id
+    `, [id]);
     
-    // For backward compatibility with template, map to old names
-    invoice.subtotal = invoice.equipment_subtotal;
-    invoice.tax_amount = invoice.vat_amount;
-    invoice.total_amount = invoice.total_due;
+    // Ensure numeric fields are properly converted and add services data
+    invoice.equipment_subtotal = safeParseFloat(invoice.equipment_subtotal);
+    invoice.vat_amount = safeParseFloat(invoice.vat_amount);
+    invoice.transport_amount = safeParseFloat(invoice.transport_amount);
+    invoice.transport_discount = safeParseFloat(invoice.transport_discount);
+    invoice.total_due = safeParseFloat(invoice.total_due);
     
-    // Convert service_fee and service_discount to services array for template
-    invoice.services = [];
-    if (invoice.service_fee > 0 || invoice.service_discount > 0) {
-      invoice.services.push({
-        name: 'Service Fee',
-        amount: parseFloat(invoice.service_fee) || 0,
-        discount: parseFloat(invoice.service_discount) || 0
-      });
-    }
+    // Add services from the new table
+    invoice.services = servicesResult.rows.map(service => ({
+      name: service.service_name,
+      amount: safeParseFloat(service.amount),
+      discount: safeParseFloat(service.discount)
+    }));
 
     // Get template configuration (use invoice's template or fall back to default)
     let templateResult;
@@ -614,10 +706,18 @@ router.get('/:id/pdf', async (req, res) => {
       ? templateResult.rows[0].template_data 
       : { headerColor: '#2563eb' };
 
+    // Use stored database values as the source of truth
+    // (No recalculation needed - trust the database)
+    
+    // For backward compatibility with template, map to old names
+    invoice.subtotal = invoice.equipment_subtotal;
+    invoice.tax_amount = invoice.vat_amount;
+    invoice.tax_rate = safeParseFloat(template_config?.taxRate);
+
     const pdfBuffer = await pdfService.generateInvoicePDF(invoice, template_config);
     
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoice.invoice_number}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${generatePDFFilename(invoice)}"`);
     res.send(pdfBuffer);
   } catch (error) {
     console.error('Error generating PDF:', error);
@@ -654,29 +754,27 @@ router.get('/:id/html', async (req, res) => {
     const invoice = invoiceResult.rows[0];
     invoice.items = itemsResult.rows;
     
-    // Ensure numeric fields are properly converted for HTML preview
-    invoice.equipment_subtotal = parseFloat(invoice.equipment_subtotal) || 0;
-    invoice.vat_amount = parseFloat(invoice.vat_amount) || 0;
-    invoice.transport_amount = parseFloat(invoice.transport_amount) || 0;
-    invoice.transport_discount = parseFloat(invoice.transport_discount) || 0;
-    invoice.service_fee = parseFloat(invoice.service_fee) || 0;
-    invoice.service_discount = parseFloat(invoice.service_discount) || 0;
-    invoice.total_due = parseFloat(invoice.total_due) || 0;
+    // Get invoice services
+    const servicesResult = await pool.query(`
+      SELECT service_name, amount, discount
+      FROM invoice_services
+      WHERE invoice_id = $1
+      ORDER BY id
+    `, [id]);
     
-    // For backward compatibility with template, map to old names
-    invoice.subtotal = invoice.equipment_subtotal;
-    invoice.tax_amount = invoice.vat_amount;
-    invoice.total_amount = invoice.total_due;
+    // Ensure numeric fields are properly converted and add services data
+    invoice.equipment_subtotal = safeParseFloat(invoice.equipment_subtotal);
+    invoice.vat_amount = safeParseFloat(invoice.vat_amount);
+    invoice.transport_amount = safeParseFloat(invoice.transport_amount);
+    invoice.transport_discount = safeParseFloat(invoice.transport_discount);
+    invoice.total_due = safeParseFloat(invoice.total_due);
     
-    // Convert service_fee and service_discount to services array for template
-    invoice.services = [];
-    if (invoice.service_fee > 0 || invoice.service_discount > 0) {
-      invoice.services.push({
-        name: 'Service Fee',
-        amount: parseFloat(invoice.service_fee) || 0,
-        discount: parseFloat(invoice.service_discount) || 0
-      });
-    }
+    // Add services from the new table
+    invoice.services = servicesResult.rows.map(service => ({
+      name: service.service_name,
+      amount: safeParseFloat(service.amount),
+      discount: safeParseFloat(service.discount)
+    }));
 
     // Get template configuration (use invoice's template or fall back to default)
     let templateResult;
@@ -700,6 +798,14 @@ router.get('/:id/html', async (req, res) => {
       ? templateResult.rows[0].template_data 
       : { headerColor: '#2563eb' };
 
+    // Use stored database values as the source of truth
+    // (No recalculation needed - trust the database)
+    
+    // For backward compatibility with template, map to old names
+    invoice.subtotal = invoice.equipment_subtotal;
+    invoice.tax_amount = invoice.vat_amount;
+    invoice.tax_rate = safeParseFloat(template_config?.taxRate);
+
     // Use the same template rendering logic as PDF service
     const templatePath = path.join(__dirname, '../templates', 'invoice.hbs');
     const templateSource = await fs.readFile(templatePath, 'utf8');
@@ -716,6 +822,15 @@ router.get('/:id/html', async (req, res) => {
     handlebars.registerHelper('or', (...args) => {
       const values = args.slice(0, -1);
       return values.some(val => val);
+    });
+    handlebars.registerHelper('invoiceSubtotal', (subtotal, transport_amount, transport_discount, services) => {
+      const serviceTotal = services ? services.reduce((sum, service) => {
+        const amount = parseFloat(service.amount) || 0;
+        const discount = parseFloat(service.discount) || 0;
+        return sum + (amount - discount);
+      }, 0) : 0;
+      
+      return parseFloat(subtotal || 0) + parseFloat(transport_amount || 0) - parseFloat(transport_discount || 0) + serviceTotal;
     });
 
     // Prepare data for template (same as PDF service)
@@ -781,15 +896,15 @@ router.post('/preview-template', async (req, res) => {
         })),
         equipment_subtotal: invoiceData.subtotal || 0,
         vat_amount: invoiceData.tax_amount || (templateData?.taxRate ? (invoiceData.subtotal * templateData.taxRate) : 0),
+        tax_rate: templateData?.taxRate || 0,
         transport_amount: invoiceData.transport_amount || 0,
         transport_discount: invoiceData.transport_discount || 0,
-        service_fee: invoiceData.service_fee || 0,
-        service_discount: invoiceData.service_discount || 0,
+        services: invoiceData.services || [],
         total_due: invoiceData.total || 0,
         // For backward compatibility
         subtotal: invoiceData.subtotal || 0,
         tax_amount: invoiceData.tax_amount || (templateData?.taxRate ? (invoiceData.subtotal * templateData.taxRate) : 0),
-        total_amount: invoiceData.total || 0,
+        total_due: invoiceData.total || 0,
         notes: invoiceData.notes || ''
       };
     } else {
@@ -825,12 +940,13 @@ router.post('/preview-template', async (req, res) => {
         ],
         equipment_subtotal: 125.00,
         vat_amount: templateData?.taxRate ? (125.00 * templateData.taxRate) : 10.00,
+        tax_rate: templateData?.taxRate || 0,
         transport_amount: 15.00, // Sample transport amount
         total_due: 150.00,       // Updated total: 125 + 10 + 15 = 150
         // For backward compatibility
         subtotal: 125.00,
         tax_amount: templateData?.taxRate ? (125.00 * templateData.taxRate) : 10.00,
-        total_amount: 150.00,
+        total_due: 150.00,
         notes: 'Sample invoice for template preview'
       };
     }
@@ -886,6 +1002,15 @@ router.post('/create-and-generate-pdf', async (req, res) => {
       customer_id = req.body.customer_id || 1;
     }
 
+    // Get template tax rate first
+    let template_tax_rate = 0;
+    if (template_id) {
+      const templateResult = await client.query('SELECT template_data FROM invoice_templates WHERE id = $1', [template_id]);
+      if (templateResult.rows.length > 0) {
+        template_tax_rate = parseFloat(templateResult.rows[0].template_data?.taxRate) || 0;
+      }
+    }
+
     // Calculate equipment subtotal (including item discounts)
     let equipment_subtotal = 0;
     for (const item of items) {
@@ -896,29 +1021,29 @@ router.post('/create-and-generate-pdf', async (req, res) => {
       equipment_subtotal += line_total;
     }
     
-    // Calculate services totals (for backward compatibility with DB schema)
+    // Calculate services totals
     const service_fee = services.reduce((sum, service) => sum + (parseFloat(service.amount) || 0), 0);
     const service_discount = services.reduce((sum, service) => sum + (parseFloat(service.discount) || 0), 0);
     
     // Calculate full invoice subtotal (equipment + transport + service fees - discounts)
     const invoice_subtotal = equipment_subtotal + parseFloat(transport_amount) - parseFloat(transport_discount) + service_fee - service_discount;
     
-    // Calculate VAT on the full invoice subtotal
-    const vat_amount = invoice_subtotal * 0.15; // 15% VAT
+    // Calculate VAT using template tax rate
+    const vat_amount = invoice_subtotal * template_tax_rate;
     
     // Calculate total due (subtotal + VAT)
-    const total_amount = invoice_subtotal + vat_amount;
+    const total_due = invoice_subtotal + vat_amount;
     const invoice_number = generateInvoiceNumber();
 
     // Create invoice
     const invoiceResult = await client.query(`
       INSERT INTO invoices (invoice_number, customer_id, rental_start_date, 
                            rental_duration_days, equipment_subtotal, vat_amount, transport_amount, 
-                           transport_discount, service_fee, service_discount, total_due, notes, template_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                           transport_discount, total_due, notes, template_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `, [invoice_number, customer_id, rental_start_date, rental_duration_days,
-        equipment_subtotal, vat_amount, transport_amount, transport_discount, service_fee, service_discount, total_amount, notes, template_id]);
+        equipment_subtotal, vat_amount, transport_amount, transport_discount, total_due, notes, template_id]);
 
     const invoice = invoiceResult.rows[0];
 
@@ -970,6 +1095,17 @@ router.post('/create-and-generate-pdf', async (req, res) => {
       `, [invoice.id, equipment_id, item.quantity, item.rental_days, item_discount, line_total]);
     }
 
+    // Create invoice services
+    for (const service of services) {
+      const serviceName = service.service_name || service.name;
+      if (serviceName && serviceName.trim()) {
+        await client.query(`
+          INSERT INTO invoice_services (invoice_id, service_name, amount, discount)
+          VALUES ($1, $2, $3, $4)
+        `, [invoice.id, serviceName, parseFloat(service.amount) || 0, parseFloat(service.discount) || 0]);
+      }
+    }
+
     await client.query('COMMIT');
 
     // Get complete invoice data for PDF
@@ -995,11 +1131,14 @@ router.post('/create-and-generate-pdf', async (req, res) => {
     // Convert services array back to template format
     completeInvoice.services = services.filter(service => service.name && service.name.trim());
 
+    // Add tax_rate from template to invoice data for PDF generation
+    completeInvoice.tax_rate = template_config?.taxRate || 0;
+
     // Generate PDF with template configuration
     const pdfBuffer = await pdfService.generateInvoicePDF(completeInvoice, template_config);
     
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="invoice-${completeInvoice.invoice_number}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${generatePDFFilename(completeInvoice)}"`);
     res.send(pdfBuffer);
 
   } catch (error) {
@@ -1138,6 +1277,167 @@ router.get('/:id/commissions', async (req, res) => {
   } catch (error) {
     console.error('Error fetching invoice commissions:', error);
     res.status(500).json({ error: 'Failed to fetch invoice commissions' });
+  }
+});
+
+// Service Employee Assignment Endpoints
+
+// Get all service employee assignments for an invoice
+router.get('/:id/service-assignments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(`
+      SELECT 
+        sea.id,
+        sea.invoice_service_id,
+        sea.employee_id,
+        sea.commission_percentage,
+        sea.commission_amount,
+        sea.paid_at,
+        e.name as employee_name,
+        ins.service_name,
+        ins.amount as service_amount,
+        ins.discount as service_discount
+      FROM service_employee_assignments sea
+      JOIN employees e ON sea.employee_id = e.id
+      JOIN invoice_services ins ON sea.invoice_service_id = ins.id
+      WHERE ins.invoice_id = $1
+      ORDER BY ins.service_name, e.name
+    `, [id]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching service assignments:', error);
+    res.status(500).json({ error: 'Failed to fetch service assignments' });
+  }
+});
+
+// Create service employee assignment
+router.post('/:id/service-assignments', [
+  body('invoice_service_id').isInt({ min: 1 }).withMessage('Valid service ID is required'),
+  body('employee_id').isInt({ min: 1 }).withMessage('Valid employee ID is required'),
+  body('commission_percentage').isFloat({ min: 0, max: 100 }).withMessage('Commission percentage must be between 0 and 100'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const { invoice_service_id, employee_id, commission_percentage } = req.body;
+
+    // Verify the service belongs to the invoice
+    const serviceCheck = await pool.query(
+      'SELECT id FROM invoice_services WHERE id = $1 AND invoice_id = $2',
+      [invoice_service_id, id]
+    );
+
+    if (serviceCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Service not found for this invoice' });
+    }
+
+    // Check if assignment already exists
+    const existingAssignment = await pool.query(
+      'SELECT id FROM service_employee_assignments WHERE invoice_service_id = $1 AND employee_id = $2',
+      [invoice_service_id, employee_id]
+    );
+
+    if (existingAssignment.rows.length > 0) {
+      return res.status(400).json({ error: 'Employee is already assigned to this service' });
+    }
+
+    // Create the assignment
+    const result = await pool.query(`
+      INSERT INTO service_employee_assignments (invoice_service_id, employee_id, commission_percentage)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `, [invoice_service_id, employee_id, commission_percentage]);
+
+    // Recalculate commissions for the invoice
+    const invoiceResult = await pool.query('SELECT total_due FROM invoices WHERE id = $1', [id]);
+    if (invoiceResult.rows.length > 0) {
+      await calculateCommissions(id, parseFloat(invoiceResult.rows[0].total_due));
+    }
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating service assignment:', error);
+    res.status(500).json({ error: 'Failed to create service assignment' });
+  }
+});
+
+// Update service employee assignment
+router.put('/:id/service-assignments/:assignmentId', [
+  body('commission_percentage').isFloat({ min: 0, max: 100 }).withMessage('Commission percentage must be between 0 and 100'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id, assignmentId } = req.params;
+    const { commission_percentage } = req.body;
+
+    // Verify the assignment belongs to a service of this invoice
+    const assignmentCheck = await pool.query(`
+      SELECT sea.id 
+      FROM service_employee_assignments sea
+      JOIN invoice_services ins ON sea.invoice_service_id = ins.id
+      WHERE sea.id = $1 AND ins.invoice_id = $2
+    `, [assignmentId, id]);
+
+    if (assignmentCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Assignment not found for this invoice' });
+    }
+
+    // Update the assignment
+    const result = await pool.query(`
+      UPDATE service_employee_assignments 
+      SET commission_percentage = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `, [commission_percentage, assignmentId]);
+
+    // Recalculate commissions for the invoice
+    const invoiceResult = await pool.query('SELECT total_due FROM invoices WHERE id = $1', [id]);
+    if (invoiceResult.rows.length > 0) {
+      await calculateCommissions(id, parseFloat(invoiceResult.rows[0].total_due));
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating service assignment:', error);
+    res.status(500).json({ error: 'Failed to update service assignment' });
+  }
+});
+
+// Delete service employee assignment
+router.delete('/:id/service-assignments/:assignmentId', async (req, res) => {
+  try {
+    const { id, assignmentId } = req.params;
+
+    // Verify the assignment belongs to a service of this invoice
+    const assignmentCheck = await pool.query(`
+      SELECT sea.id 
+      FROM service_employee_assignments sea
+      JOIN invoice_services ins ON sea.invoice_service_id = ins.id
+      WHERE sea.id = $1 AND ins.invoice_id = $2
+    `, [assignmentId, id]);
+
+    if (assignmentCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Assignment not found for this invoice' });
+    }
+
+    // Delete the assignment
+    await pool.query('DELETE FROM service_employee_assignments WHERE id = $1', [assignmentId]);
+
+    res.json({ message: 'Service assignment deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting service assignment:', error);
+    res.status(500).json({ error: 'Failed to delete service assignment' });
   }
 });
 

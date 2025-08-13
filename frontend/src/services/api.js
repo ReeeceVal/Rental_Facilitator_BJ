@@ -90,6 +90,11 @@ export const invoicesAPI = {
   delete: (id) => api.delete(`/invoices/${id}`),
   generatePDF: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
   createAndGeneratePDF: (data) => api.post('/invoices/create-and-generate-pdf', data, { responseType: 'blob' }),
+  // Service employee assignments
+  getServiceAssignments: (id) => api.get(`/invoices/${id}/service-assignments`),
+  createServiceAssignment: (id, data) => api.post(`/invoices/${id}/service-assignments`, data),
+  updateServiceAssignment: (id, assignmentId, data) => api.put(`/invoices/${id}/service-assignments/${assignmentId}`, data),
+  deleteServiceAssignment: (id, assignmentId) => api.delete(`/invoices/${id}/service-assignments/${assignmentId}`),
   getCalendarEvents: (params = {}) => {
     const searchParams = new URLSearchParams()
     Object.entries(params).forEach(([key, value]) => {

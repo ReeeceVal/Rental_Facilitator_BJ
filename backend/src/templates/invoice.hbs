@@ -385,17 +385,17 @@
             <table class="totals-table">
                 <tr>
                     <td>Subtotal (Excl. VAT):</td>
-                    <td class="text-right">{{formatCurrency (invoiceSubtotal subtotal transport_amount transport_discount service_fee service_discount)}}</td>
+                    <td class="text-right">{{formatCurrency (invoiceSubtotal subtotal transport_amount transport_discount services)}}</td>
                 </tr>
-                {{#if tax_amount}}
+                {{#if (gt tax_amount 0)}}
                 <tr>
-                    <td>VAT @ 15%:</td>
+                    <td>TAX @ {{#if tax_rate}}{{multiply tax_rate 100}}{{else}}{{#if templateConfig.taxRate}}{{multiply templateConfig.taxRate 100}}{{else}}0{{/if}}{{/if}}%:</td>
                     <td class="text-right">{{formatCurrency tax_amount}}</td>
                 </tr>
                 {{/if}}
                 <tr class="total-row">
                     <td>Total Due:</td>
-                    <td class="text-right">{{formatCurrency total_amount}}</td>
+                    <td class="text-right">{{formatCurrency total_due}}</td>
                 </tr>
             </table>
         </div>

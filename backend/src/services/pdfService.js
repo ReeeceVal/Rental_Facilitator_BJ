@@ -17,8 +17,14 @@ handlebars.registerHelper('or', (...args) => {
   const values = args.slice(0, -1);
   return values.some(val => val);
 });
-handlebars.registerHelper('invoiceSubtotal', (subtotal, transport_amount, transport_discount, service_fee, service_discount) => {
-  return subtotal + transport_amount - transport_discount + service_fee - service_discount;
+handlebars.registerHelper('invoiceSubtotal', (subtotal, transport_amount, transport_discount, services) => {
+  const serviceTotal = services ? services.reduce((sum, service) => {
+    const amount = parseFloat(service.amount) || 0;
+    const discount = parseFloat(service.discount) || 0;
+    return sum + (amount - discount);
+  }, 0) : 0;
+  
+  return parseFloat(subtotal || 0) + parseFloat(transport_amount || 0) - parseFloat(transport_discount || 0) + serviceTotal;
 });
 
 class PDFService {

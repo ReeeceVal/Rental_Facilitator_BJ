@@ -6,12 +6,12 @@ async function runMigrations() {
   try {
     console.log('Starting database migration...');
     
-    // Read and execute schema
-    const schemaPath = path.join(__dirname, '../../../database/schema.sql');
+    // Read and execute consolidated schema (includes all migrations)
+    const schemaPath = path.join(__dirname, '../../../database/consolidated_schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
     
     await pool.query(schema);
-    console.log('Database schema created successfully');
+    console.log('Consolidated database schema created successfully');
     
     // Check if seed data should be loaded
     const seedPath = path.join(__dirname, '../../../database/seeds');

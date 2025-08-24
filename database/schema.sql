@@ -32,6 +32,16 @@ CREATE TABLE customers (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Invoice Templates (MOVED UP - must come before invoices)
+CREATE TABLE invoice_templates (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    template_data JSONB NOT NULL,
+    is_default BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Invoices
 CREATE TABLE invoices (
     id SERIAL PRIMARY KEY,
@@ -72,16 +82,6 @@ CREATE TABLE screenshot_uploads (
     processing_status VARCHAR(50) DEFAULT 'pending',
     error_message TEXT,
     created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Invoice Templates
-CREATE TABLE invoice_templates (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    template_data JSONB NOT NULL,
-    is_default BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Create indexes for better performance
